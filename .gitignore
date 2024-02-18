@@ -1,0 +1,11 @@
+/bazel-*
+/conan/conan
+/conan/conan.lock
+/conan/conanbuildinfo.txt
+/conan/conaninfo.txt
+/conan/graph_info.json
+/.cache
+MODULE.bazel
+MODULE.bazel.lock
+compile_commands.json
+external
