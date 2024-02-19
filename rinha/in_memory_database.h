@@ -4,8 +4,8 @@
 #include "rinha/structs.h"
 
 namespace rinha {
-Customer *get_customer(int id);
-TransactionResult ExecuteTransaction(int id, Transaction&& transaction);
+Customer *GetCustomer(int id);
+TransactionResult ExecuteTransaction(int id, Transaction &&transaction);
 } // namespace rinha
 
 #endif

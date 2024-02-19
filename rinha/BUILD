@@ -4,6 +4,7 @@ cc_binary(
     deps = [
         "@abseil//:abseil",
         "@glog//:glog",
+        ":request_handler",
     ]
 )
 
@@ -43,8 +44,23 @@ cc_library(
     srcs = ["from_http.cc"],
     deps = [
         "@abseil//:abseil",
+        "@abseil//:abseil-absl_time",
         "@glog//:glog",
         "@simdjson//:simdjson",
         ":structs",
+    ]
+)
+
+cc_library(
+    name = "request_handler",
+    hdrs = ["request_handler.h"],
+    srcs = ["request_handler.cc"],
+    deps = [
+        "@abseil//:abseil",
+        "@glog//:glog",
+        ":structs",
+        ":in_memory_database",
+        ":to_json",
+        ":from_http",
     ]
 )

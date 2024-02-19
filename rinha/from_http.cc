@@ -107,74 +107,74 @@ bool ParseJsonBody(absl::string_view body, Transaction *transaction) {
 }
 
 } // namespace
-Request from_http(absl::string_view http) {
-  Request request;
-  request.type = RequestType::INVALID;
+
+bool FromHttp(absl::string_view http, Request *request) {
   size_t first_end_line = http.find("\r\n");
   if (first_end_line == std::string::npos) {
-    return request;
+    return false;
   }
 
   size_t get_verb_idx = http.find(kGetVerb);
   if (get_verb_idx != std::string::npos && get_verb_idx < first_end_line) {
     size_t get_path_idx = http.find(kGetPathBegin);
     if (get_path_idx == std::string::npos) {
-      return request;
+      return false;
     }
 
     size_t id_idx = get_path_idx + sizeof(kGetPathBegin) - 1;
     size_t id_end_idx = http.find("/", id_idx);
     if (id_end_idx == std::string::npos) {
-      return request;
+      return false;
     }
 
     size_t extrato_idx = http.find(kGetPathEnd);
     if (extrato_idx == std::string::npos) {
-      return request;
+      return false;
     }
 
-    request.id =
+    request->id =
         std::stoi(std::string(http.substr(id_idx, id_end_idx - id_idx)));
-    request.type = RequestType::BALANCE;
+    request->type = RequestType::BALANCE;
 
-    return request;
+    return true;
   }
 
   size_t post_verb_idx = http.find(kPostVerb);
   if (post_verb_idx == std::string::npos || post_verb_idx >= first_end_line) {
-    return request;
+    return false;
   }
 
   size_t post_path_idx = http.find(kPostPathBegin);
   if (post_path_idx == std::string::npos) {
-    return request;
+    return false;
   }
 
   size_t id_idx = post_path_idx + sizeof(kPostPathBegin) - 1;
   size_t id_end_idx = http.find("/", id_idx);
   if (id_end_idx == std::string::npos) {
-    return request;
+    return false;
   }
 
   size_t transacoes_idx = http.find(kPostPathEnd);
   if (transacoes_idx == std::string::npos) {
-    return request;
+    return false;
   }
 
   size_t begin_body_idx = http.find(kPostBeginBody);
   if (begin_body_idx == std::string::npos) {
-    return request;
+    return false;
   }
 
   std::string json_body = std::string(http.substr(begin_body_idx + 4));
   DLOG(INFO) << "json_body: " << json_body << std::endl;
 
-  if (!ParseJsonBody(json_body, &request.transaction)) {
-    return request;
+  if (!ParseJsonBody(json_body, &request->transaction)) {
+    return false;
   }
 
-  request.id = std::stoi(std::string(http.substr(id_idx, id_end_idx - id_idx)));
-  request.type = RequestType::TRANSACTION;
-  return request;
+  request->id =
+      std::stoi(std::string(http.substr(id_idx, id_end_idx - id_idx)));
+  request->type = RequestType::TRANSACTION;
+  return true;
 }
 } // namespace rinha

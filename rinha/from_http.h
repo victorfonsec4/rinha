@@ -8,7 +8,7 @@
 #include "absl/strings/string_view.h"
 
 namespace rinha {
-Request from_http(absl::string_view http);
+bool FromHttp(absl::string_view http, Request *request);
 } // namespace rinha
 
 #endif

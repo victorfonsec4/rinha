@@ -6,7 +6,8 @@
 namespace rinha {
 
 enum class TransactionResult { SUCCESS, LIMIT_EXCEEDED, NOT_FOUND };
-enum class RequestType { TRANSACTION, BALANCE, INVALID };
+enum class RequestType { TRANSACTION, BALANCE };
+enum class Result { SUCCESS, INVALID_REQUEST, NOT_FOUND };
 
 struct Transaction {
   int value; char description[11]; std::string timestamp;

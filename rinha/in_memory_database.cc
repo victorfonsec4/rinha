@@ -34,7 +34,7 @@ Customer customers[5] = {
 };
 } // namespace
 
-Customer *get_customer(int id) {
+Customer *GetCustomer(int id) {
   if (id > 5 || id < 1) {
     return nullptr;
   }
