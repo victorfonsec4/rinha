@@ -20,7 +20,7 @@ int main() {
   // Create socket
   server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (server_fd == -1) {
-    std::cerr << "Failed to create socket" << std::endl;
+    DLOG(ERROR) << "Failed to create socket" << std::endl;
     return -1;
   }
 
@@ -30,19 +30,19 @@ int main() {
   unlink(socket_path); // Remove the socket if it already exists
   if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) ==
       -1) {
-    std::cerr << "Bind failed" << std::endl;
+    DLOG(ERROR) << "Bind failed" << std::endl;
     close(server_fd);
     return -1;
   }
 
   // Listen for connections
   if (listen(server_fd, 5) == -1) {
-    std::cerr << "Listen failed" << std::endl;
+    DLOG(ERROR) << "Listen failed" << std::endl;
     close(server_fd);
     return -1;
   }
 
-  std::cout << "Server listening on " << socket_path << std::endl;
+  DLOG(INFO) << "Server listening on " << socket_path << std::endl;
 
   // Accept connections
   while (true) {
@@ -50,13 +50,13 @@ int main() {
     client_fd =
         accept(server_fd, (struct sockaddr *)&client_addr, &client_addr_size);
     if (client_fd == -1) {
-      std::cerr << "Accept failed" << std::endl;
+      DLOG(ERROR) << "Accept failed" << std::endl;
       continue; // Continue accepting other connections
     }
 
     // Read request (this example does not parse the request)
     read(client_fd, buffer, sizeof(buffer) - 1);
-    std::cout << "Received request: " << buffer << std::endl;
+    DLOG(INFO) << "Received request: " << std::endl << buffer << std::endl;
 
     // Send HTTP response
     write(client_fd, http_response, strlen(http_response));
