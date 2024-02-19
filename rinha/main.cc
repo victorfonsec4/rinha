@@ -13,14 +13,16 @@
 
 const char *socket_path = "/tmp/unix_socket_example.sock";
 
-constexpr char OkHeader[] =
+constexpr char kOkHeader[] =
     "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ";
+constexpr size_t kOkHeaderLength = sizeof(kOkHeader);
 
-constexpr char BadRequestHeader[] = "HTTP/1.1 422 Unprocessable Entity\r\n\r\n";
-constexpr size_t BadRequestHeaderLength = sizeof(BadRequestHeader);
+constexpr char kBadRequestHeader[] =
+    "HTTP/1.1 422 Unprocessable Entity\r\n\r\n";
+constexpr size_t kBadRequestHeaderLength = sizeof(kBadRequestHeader);
 
-constexpr char NotFoundHeader[] = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
-constexpr size_t NotFoundHeaderLength = sizeof(NotFoundHeader);
+constexpr char kNotFoundHeaderLength[] = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
+constexpr size_t NotFoundHeaderLength = sizeof(kNotFoundHeaderLength);
 
 int main() {
   int server_fd, client_fd;
@@ -66,37 +68,67 @@ int main() {
     }
 
     // Read request (this example does not parse the request)
-    read(client_fd, buffer, sizeof(buffer) - 1);
+    ssize_t num_read = read(client_fd, buffer, sizeof(buffer) - 1);
+    if (num_read == -1) {
+      DLOG(ERROR) << "Failed to read request" << std::endl;
+      close(client_fd);
+      continue; // Continue accepting other connections
+    }
+
+    if (num_read >= sizeof(buffer) - 1) {
+      DLOG(INFO) << "Message too big" << std::endl;
+      // discard the rest of the message in the socket
+      while (num_read == sizeof(buffer) - 1) {
+        num_read = read(client_fd, buffer, sizeof(buffer) - 1);
+      }
+      ssize_t result =
+          write(client_fd, kBadRequestHeader, kBadRequestHeaderLength);
+      if (result == -1) {
+        DLOG(ERROR) << "Failed to send response" << std::endl;
+      }
+      close(client_fd);
+      continue; // Continue accepting other connections
+    }
+
+    buffer[num_read] = '\0';
     DLOG(INFO) << "Received request: " << std::endl << buffer << std::endl;
 
     std::string response_body;
     rinha::Result result = rinha::HandleRequest(buffer, &response_body);
 
-    const char *http_response;
-    size_t http_response_length;
+    const char *http_response = kOkHeader;
+    size_t http_response_length = kOkHeaderLength;
 
+    std::string payload_response;
     switch (result) {
     case rinha::Result::SUCCESS: {
       // TODO: can we avoid this copy?
-      std::string response = absl::StrCat(OkHeader, response_body.size(),
-                                          "\r\n", response_body, "\r\n\r\n");
-      http_response = response.c_str();
-      http_response_length = response.size();
+      payload_response = absl::StrCat(kOkHeader, response_body.size(),
+                                      "\r\n\r\n", response_body);
+      http_response = payload_response.c_str();
+      http_response_length = payload_response.size();
       break;
     }
     case rinha::Result::INVALID_REQUEST:
-      http_response = BadRequestHeader;
-      http_response_length = BadRequestHeaderLength;
+      http_response = kBadRequestHeader;
+      http_response_length = kBadRequestHeaderLength;
       break;
     case rinha::Result::NOT_FOUND:
-      http_response = NotFoundHeader;
+      http_response = kNotFoundHeaderLength;
       http_response_length = NotFoundHeaderLength;
       break;
     default:
+      DCHECK(false);
       break;
     }
 
-    write(client_fd, http_response, http_response_length);
+    // Send response
+    DLOG(INFO) << "Sending response: " << std::endl
+               << http_response << std::endl;
+    ssize_t r = write(client_fd, http_response, http_response_length);
+    if (r == -1) {
+      DLOG(ERROR) << "Failed to send response" << std::endl;
+    }
 
     // Close connection
     close(client_fd);

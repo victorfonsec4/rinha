@@ -11,11 +11,11 @@
 namespace rinha {
 namespace {
 constexpr char kGetVerb[] = "GET";
-constexpr char kGetPathBegin[] = " clientes/";
+constexpr char kGetPathBegin[] = " /clientes/";
 constexpr char kGetPathEnd[] = "/extrato ";
 
 constexpr char kPostVerb[] = "POST";
-constexpr char kPostPathBegin[] = " clientes/";
+constexpr char kPostPathBegin[] = " /clientes/";
 constexpr char kPostPathEnd[] = "/transacoes ";
 constexpr char kPostBeginBody[] = "\r\n\r\n";
 
@@ -40,9 +40,10 @@ bool ParseJsonBody(absl::string_view body, Transaction *transaction) {
     return false;
   }
 
-  uint64_t valor;
-  char tipo;
-  std::string descricao;
+  uint64_t valor = 0;
+  bool valor_found = false;
+  char tipo = 0;
+  std::string descricao = "";
   for (auto field : obj) {
     simdjson::ondemand::raw_json_string key;
     error = field.key().get(key);
@@ -57,6 +58,7 @@ bool ParseJsonBody(absl::string_view body, Transaction *transaction) {
         DLOG(ERROR) << "Error getting valor: " << error << std::endl;
         return false;
       }
+      valor_found = true;
     } else if (key == "descricao") {
       std::string_view tmp;
       error = field.value().get_string().get(tmp);
@@ -81,6 +83,21 @@ bool ParseJsonBody(absl::string_view body, Transaction *transaction) {
       DLOG(ERROR) << "Unknown field: " << field.key() << std::endl;
       return false;
     }
+  }
+
+  if (tipo == 0) {
+    DLOG(ERROR) << "Tipo not found" << std::endl;
+    return false;
+  }
+
+  if (descricao.empty()) {
+    DLOG(ERROR) << "Descricao not found" << std::endl;
+    return false;
+  }
+
+  if (!valor_found) {
+    DLOG(ERROR) << "Valor not found" << std::endl;
+    return false;
   }
 
   if (tipo != 'c' && tipo != 'd') {
@@ -111,24 +128,29 @@ bool ParseJsonBody(absl::string_view body, Transaction *transaction) {
 bool FromHttp(absl::string_view http, Request *request) {
   size_t first_end_line = http.find("\r\n");
   if (first_end_line == std::string::npos) {
+    DLOG(ERROR) << "No end of line found" << std::endl;
     return false;
   }
 
   size_t get_verb_idx = http.find(kGetVerb);
   if (get_verb_idx != std::string::npos && get_verb_idx < first_end_line) {
+    DLOG(INFO) << "GET request" << std::endl;
     size_t get_path_idx = http.find(kGetPathBegin);
     if (get_path_idx == std::string::npos) {
+      DLOG(ERROR) << "No get path begin found" << std::endl;
       return false;
     }
 
     size_t id_idx = get_path_idx + sizeof(kGetPathBegin) - 1;
     size_t id_end_idx = http.find("/", id_idx);
     if (id_end_idx == std::string::npos) {
+      DLOG(ERROR) << "No id end found" << std::endl;
       return false;
     }
 
     size_t extrato_idx = http.find(kGetPathEnd);
     if (extrato_idx == std::string::npos) {
+      DLOG(ERROR) << "No extrato path end found" << std::endl;
       return false;
     }
 
@@ -141,27 +163,32 @@ bool FromHttp(absl::string_view http, Request *request) {
 
   size_t post_verb_idx = http.find(kPostVerb);
   if (post_verb_idx == std::string::npos || post_verb_idx >= first_end_line) {
+    DLOG(ERROR) << "No POST verb found" << std::endl;
     return false;
   }
 
   size_t post_path_idx = http.find(kPostPathBegin);
   if (post_path_idx == std::string::npos) {
+    DLOG(ERROR) << "No post path begin found" << std::endl;
     return false;
   }
 
   size_t id_idx = post_path_idx + sizeof(kPostPathBegin) - 1;
   size_t id_end_idx = http.find("/", id_idx);
   if (id_end_idx == std::string::npos) {
+    DLOG(ERROR) << "No id end found" << std::endl;
     return false;
   }
 
   size_t transacoes_idx = http.find(kPostPathEnd);
   if (transacoes_idx == std::string::npos) {
+    DLOG(ERROR) << "No transacoes path end found" << std::endl;
     return false;
   }
 
   size_t begin_body_idx = http.find(kPostBeginBody);
   if (begin_body_idx == std::string::npos) {
+    DLOG(ERROR) << "No begin post body found" << std::endl;
     return false;
   }
 
@@ -169,6 +196,7 @@ bool FromHttp(absl::string_view http, Request *request) {
   DLOG(INFO) << "json_body: " << json_body << std::endl;
 
   if (!ParseJsonBody(json_body, &request->transaction)) {
+    DLOG(ERROR) << "Failed to parse json body" << std::endl;
     return false;
   }
 

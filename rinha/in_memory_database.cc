@@ -47,7 +47,7 @@ TransactionResult ExecuteTransaction(int id, Transaction &&transaction) {
   }
   Customer *customer = &customers[id - 1];
 
-  if (customer->balance + transaction.value < customer->limit) {
+  if (customer->balance + transaction.value < -customer->limit) {
     return TransactionResult::LIMIT_EXCEEDED;
   }
 
@@ -56,7 +56,9 @@ TransactionResult ExecuteTransaction(int id, Transaction &&transaction) {
       std::move(transaction);
   customer->next_transaction_index =
       (customer->next_transaction_index + 1) % 10;
-  customer->transaction_count++;
+  if (customer->transaction_count <= 10) {
+    customer->transaction_count++;
+  }
 
   return TransactionResult::SUCCESS;
 }
