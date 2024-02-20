@@ -1,3 +1,15 @@
 * Running with optmizations
 
 $bazel run -c opt --copt=-O3 --copt=-DNDEBUG //rinha:main
+
+* Running nginx
+
+chmod 777 /tmp/unix_socket_example.sock && sudo docker run -p 9999:9999 -v /tmp:/tmp nginx:latest
+
+* Profiling
+
+$bazel build  --copt=-pg --linkopt=-pg //rinha:main
+$./bazel-bin/rinha/main
+$ gdb -p <PID>
+    call exit(0)
+$gprof bazel-bin/rinha/main gmon.out > analysis.txt

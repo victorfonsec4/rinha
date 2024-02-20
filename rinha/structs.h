@@ -10,7 +10,9 @@ enum class RequestType { TRANSACTION, BALANCE };
 enum class Result { SUCCESS, INVALID_REQUEST, NOT_FOUND };
 
 struct Transaction {
-  int value; char description[11]; std::string timestamp;
+  int value;
+  char description[11];
+  char timestamp[40];
 };
 
 struct Customer {
@@ -26,6 +28,6 @@ struct Request {
   int id;
   Transaction transaction;
 };
-} //namespace rinha
+} // namespace rinha
 
 #endif

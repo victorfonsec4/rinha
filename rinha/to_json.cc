@@ -1,8 +1,15 @@
+#ifndef NDEBUG
+#define DEBUG 1
+#else
+#define DEBUG 0
+#endif
+
 #include "rinha/to_json.h"
 
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "glog/logging.h"
 
 #include "rinha/structs.h"
 
@@ -59,16 +66,35 @@ std::string to_json(const Transaction transactions[], int transaction_count,
 
 std::string CustomerToJson(const Customer &customer,
                            std::string &&data_extrato) {
-  return absl::StrCat(kTotal, customer.balance, kData, std::move(data_extrato),
-                      kLimite, customer.limit, kUltimas,
-                      to_json(customer.transactions, customer.transaction_count,
-                              customer.next_transaction_index),
-                      kEnd);
+  std::string json =
+      absl::StrCat(kTotal, customer.balance, kData, std::move(data_extrato),
+                   kLimite, customer.limit, kUltimas,
+                   to_json(customer.transactions, customer.transaction_count,
+                           customer.next_transaction_index),
+                   kEnd);
+  // try {
+  //   auto parsed_json = nlohmann::json::parse(json);
+  // } catch (nlohmann::json::parse_error &e) {
+  //   LOG(ERROR) << json;
+  //   LOG(ERROR) << "JSON is invalid: " << e.what() << std::endl;
+  //   LOG(ERROR) << "Customer: " << customer.balance << " " << customer.limit
+  //              << std::endl;
+  //   LOG(ERROR) << "Transaction count: " << customer.transaction_count
+  //              << std::endl;
+  //   LOG(ERROR) << "Next transaction index: " << customer.next_transaction_index
+  //              << std::endl;
+  //   for (int i = 0; i < std::min(customer.transaction_count, 10); i++) {
+  //     LOG(ERROR) << to_json(customer.transactions[i]) << std::endl;
+  //   }
+  // }
+
+  return json;
 }
 
 std::string TransactionResultToJson(const Customer &customer) {
-  return absl::StrCat(kResultLimite, customer.limit, kResultSaldo,
-                      customer.balance, kResultEnd);
+  std::string json = absl::StrCat(kResultLimite, customer.limit, kResultSaldo,
+                                  customer.balance, kResultEnd);
+  return json;
 }
 
 } // namespace rinha

@@ -4,7 +4,9 @@ cc_binary(
     deps = [
         "@abseil//:abseil",
         "@glog//:glog",
+        "@threadpool//:threadpool",
         ":request_handler",
+        ":sqlite_database",
     ]
 )
 
@@ -24,6 +26,19 @@ cc_library(
         "@abseil//:abseil",
         "@glog//:glog",
         ":structs",
+    ]
+)
+
+cc_library(
+    name = "sqlite_database",
+    hdrs = ["sqlite_database.h"],
+    srcs = ["sqlite_database.cc"],
+    deps = [
+        "@abseil//:abseil",
+        "@glog//:glog",
+        "@sqlite3//:sqlite3",
+        ":structs",
+        ":to_json",
     ]
 )
 
@@ -62,5 +77,6 @@ cc_library(
         ":in_memory_database",
         ":to_json",
         ":from_http",
+        ":sqlite_database",
     ]
 )

@@ -19,14 +19,13 @@ constexpr char kPostPathBegin[] = " /clientes/";
 constexpr char kPostPathEnd[] = "/transacoes ";
 constexpr char kPostBeginBody[] = "\r\n\r\n";
 
-// TODO: According to the docs only one document may be open at a time with
-// a parser, when we start threading we need to account for this.
-simdjson::ondemand::parser parser;
+thread_local simdjson::ondemand::parser parser;
 
 bool ParseJsonBody(absl::string_view body, Transaction *transaction) {
   // TODO: This copies the body again, maybe find a way to avoid this
   simdjson::padded_string p(body.data(), body.size());
   simdjson::ondemand::document doc;
+
   auto error = parser.iterate(p).get(doc);
   if (error) {
     DLOG(ERROR) << "Error parsing json: " << error << std::endl;
@@ -115,10 +114,7 @@ bool ParseJsonBody(absl::string_view body, Transaction *transaction) {
     transaction->value *= -1;
   }
 
-  for (size_t i = 0; i < descricao.size(); i++) {
-    transaction->description[i] = descricao[i];
-  }
-  transaction->description[descricao.size()] = '\0';
+  std::strcpy(transaction->description, descricao.c_str());
 
   return true;
 }
