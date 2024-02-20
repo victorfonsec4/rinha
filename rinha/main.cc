@@ -1,5 +1,6 @@
 #include <fcntl.h>
 #include <iostream>
+#include <sys/epoll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -19,8 +20,6 @@
 ABSL_FLAG(std::string, socket_path, "/tmp/unix_socket_example.sock",
           "path to socket file");
 
-constexpr char kContentLength[] = "Content-Length: ";
-
 constexpr char kOkHeader[] =
     "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ";
 constexpr size_t kOkHeaderLength = sizeof(kOkHeader);
@@ -32,6 +31,7 @@ constexpr size_t kBadRequestHeaderLength = sizeof(kBadRequestHeader);
 constexpr char kNotFoundHeaderLength[] = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
 constexpr size_t NotFoundHeaderLength = sizeof(kNotFoundHeaderLength);
 constexpr int kProcessThreadCount = 50;
+constexpr int kConnectionThreadCount = 5;
 
 namespace {
 void ProcessRequest(std::vector<char> &&buffer, int num_read, int client_fd) {
@@ -110,7 +110,8 @@ void SetNonBlocking(int socket_fd) {
 int main(int argc, char *argv[]) {
   absl::ParseCommandLine(argc, argv);
   CHECK(rinha::InitializeDb());
-  ThreadPool pool(kProcessThreadCount);
+  ThreadPool process_pool(kProcessThreadCount);
+  ThreadPool connection_pool(kConnectionThreadCount);
 
   int server_fd, client_fd;
   struct sockaddr_un server_addr, client_addr;
@@ -125,13 +126,13 @@ int main(int argc, char *argv[]) {
 
   SetNonBlocking(server_fd);
 
-
   std::string socket_path = absl::GetFlag(FLAGS_socket_path);
   LOG(INFO) << "Socket path: " << socket_path << std::endl;
 
   // Bind socket to socket path
   server_addr.sun_family = AF_UNIX;
-  strncpy(server_addr.sun_path, socket_path.c_str(), sizeof(server_addr.sun_path) - 1);
+  strncpy(server_addr.sun_path, socket_path.c_str(),
+          sizeof(server_addr.sun_path) - 1);
   unlink(socket_path.c_str()); // Remove the socket if it already exists
   if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) ==
       -1) {
@@ -149,50 +150,53 @@ int main(int argc, char *argv[]) {
 
   DLOG(INFO) << "Server listening on " << socket_path << std::endl;
 
-  fd_set readfds;
-  struct timeval tv;
-  int select_result;
+  const int MAX_EVENTS = 50;
+  struct epoll_event ev, events[MAX_EVENTS];
+  int epollfd = epoll_create1(0);
+  if (epollfd == -1) {
+    LOG(ERROR) << "Failed to create epoll file descriptor" << std::endl;
+    return -1;
+  }
+
+  ev.events = EPOLLIN;
+  ev.data.fd = server_fd;
+  if (epoll_ctl(epollfd, EPOLL_CTL_ADD, server_fd, &ev) == -1) {
+    LOG(ERROR) << "Failed to add file descriptor to epoll" << std::endl;
+    close(server_fd);
+    return -1;
+  }
 
   // Accept connections
   while (true) {
-    FD_ZERO(&readfds);
-    FD_SET(server_fd, &readfds);
-    tv.tv_sec = 5;
-    tv.tv_usec = 0;
-
-    select_result = select(server_fd + 1, &readfds, NULL, NULL, &tv);
-
-    if (select_result == -1) {
-      LOG(ERROR) << "Select failed" << std::endl;
+    int nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
+    if (nfds == -1) {
+      LOG(ERROR) << "Epoll wait failed" << std::endl;
       break;
-    } else if (select_result == 0) {
-      DLOG(INFO) << "select timeout" << std::endl;
-      continue;
     }
 
-    if (FD_ISSET(server_fd, &readfds)) {
-      client_fd =
-          accept(server_fd, (struct sockaddr *)&client_addr, &client_addr_size);
-      if (client_fd == -1) {
-        LOG(ERROR) << "Accept failed" << std::endl << errno << std::endl << strerror(errno)
-                   << std::endl;
-
-        continue; // Non-blocking accept failed
-      }
-
-      // SetNonBlocking(client_fd); // Set the client socket to non-blocking
-
-      pool.enqueue([client_fd]() {
-        std::vector<char> buffer(1024);
-        ssize_t num_read = read(client_fd, buffer.data(), buffer.size() - 1);
-        if (num_read == -1) {
-          DLOG(ERROR) << "Failed to read from socket" << std::endl;
-          close(client_fd);
-          return;
+    for (int n = 0; n < nfds; ++n) {
+      if (events[n].data.fd == server_fd) {
+        client_fd = accept(server_fd, (struct sockaddr *)&client_addr,
+                           &client_addr_size);
+        if (client_fd == -1) {
+          LOG(ERROR) << "Accept failed: " << strerror(errno) << std::endl;
+          continue;
         }
 
-        ProcessRequest(std::move(buffer), num_read, client_fd);
-      });
+        // SetNonBlocking(client_fd);
+
+        process_pool.enqueue([client_fd]() {
+          std::vector<char> buffer(1024);
+          ssize_t num_read = read(client_fd, buffer.data(), buffer.size() - 1);
+          if (num_read == -1) {
+            DLOG(ERROR) << "Failed to read from socket" << std::endl;
+            close(client_fd);
+            return;
+          }
+
+          ProcessRequest(std::move(buffer), num_read, client_fd);
+        });
+      }
     }
   }
 
