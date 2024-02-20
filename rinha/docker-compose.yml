@@ -1,0 +1,49 @@
+version: "3.5"
+
+services:
+  api01: &api
+    # Lembre-se de que seu serviço HTTP deve estar hospedado num repositório
+    # publicamente acessível! Ex.: hub.docker.com
+    image: vifonsec/rinha:latest
+    hostname: api01
+    volumes:
+      - /tmp:/tmp
+    deploy:
+      resources:
+        limits:
+          cpus: "0.7"
+          memory: "200MB"
+
+  api02:
+    # Essa sintaxe reusa o que foi declarado em 'api01'.
+    <<: *api
+    hostname: api02
+    command: ["./main", "--socket_path", "/tmp/unix_socket_example2.sock"]
+
+  nginx:
+    image: vifonsec/nginx2:latest
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - /tmp:/tmp
+    depends_on:
+      - api01
+      - api02
+    ports:
+        # Obrigatório expor/usar a porta 9999 no load balancer!
+      - "9999:9999"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: "10MB"
+
+# O uso do modo `bridge` deve ser adequado à carga que será usada no teste.
+# A edição anterior se beneficiou do modo host pois o volume de requisições
+# era relativamente alto e a virtualização da rede se tornou um gargalo, mas
+# este modo é mais complexo de ser configurado. Fique à vontade para usar o
+# modo que quiser desde que não conflite com portas trivialmente usadas em um
+# SO.
+networks:
+  default:
+    driver: bridge
+    name: rinha-nginx-2024q1

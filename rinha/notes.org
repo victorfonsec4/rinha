@@ -1,6 +1,6 @@
 * Running with optmizations
 
-$bazel run -c opt --copt=-O3 --copt=-DNDEBUG //rinha:main
+$bazel run -c opt --copt=-O2 --copt=-DNDEBUG //rinha:main
 
 * Running nginx
 
@@ -13,3 +13,7 @@ $./bazel-bin/rinha/main
 $ gdb -p <PID>
     call exit(0)
 $gprof bazel-bin/rinha/main gmon.out > analysis.txt
+
+* building docker image
+
+$ bazel build -c opt --copt=-O2 --copt=-DNDEBUG //rinha:main && cp ../bazel-bin/rinha/main . && sudo docker build -f main.dockerfile -t vifonsec/rinha:latest -f main.dockerfile .

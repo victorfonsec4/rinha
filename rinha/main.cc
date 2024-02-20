@@ -5,6 +5,9 @@
 #include <unistd.h>
 
 #include "ThreadPool.h"
+#include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
+#include "absl/flags/usage.h"
 #include "absl/status/status.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -13,7 +16,8 @@
 #include "rinha/request_handler.h"
 #include "rinha/sqlite_database.h"
 
-const char *socket_path = "/tmp/unix_socket_example.sock";
+ABSL_FLAG(std::string, socket_path, "/tmp/unix_socket_example.sock",
+          "path to socket file");
 
 constexpr char kContentLength[] = "Content-Length: ";
 
@@ -104,7 +108,8 @@ void SetNonBlocking(int socket_fd) {
 }
 } // namespace
 
-int main() {
+int main(int argc, char *argv[]) {
+  absl::ParseCommandLine(argc, argv);
   CHECK(rinha::InitializeDb());
   ThreadPool pool(kThreadCount);
 
@@ -121,10 +126,14 @@ int main() {
 
   SetNonBlocking(server_fd);
 
+
+  std::string socket_path = absl::GetFlag(FLAGS_socket_path);
+  LOG(INFO) << "Socket path: " << socket_path << std::endl;
+
   // Bind socket to socket path
   server_addr.sun_family = AF_UNIX;
-  strncpy(server_addr.sun_path, socket_path, sizeof(server_addr.sun_path) - 1);
-  unlink(socket_path); // Remove the socket if it already exists
+  strncpy(server_addr.sun_path, socket_path.c_str(), sizeof(server_addr.sun_path) - 1);
+  unlink(socket_path.c_str()); // Remove the socket if it already exists
   if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) ==
       -1) {
     LOG(ERROR) << "Bind failed" << std::endl;
@@ -190,7 +199,7 @@ int main() {
 
   // Cleanup
   close(server_fd);
-  unlink(socket_path);
+  unlink(socket_path.c_str());
 
   return 0;
 }

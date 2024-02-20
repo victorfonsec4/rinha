@@ -21,7 +21,7 @@ constexpr char kInsertSql[] =
 
 constexpr char kSelectSql[] = "SELECT DATA FROM Users WHERE ID = ?;";
 
-constexpr char kDatabasePath[] = "/home/victor/repos/rinha/rinha/rinha.db";
+constexpr char kDatabasePath[] = "rinha.db";
 
 thread_local sqlite3 *dbs[5];
 thread_local sqlite3_stmt *insert_prepared_stmts[5];
