@@ -12,3 +12,5 @@ external
 **.db*
 gmon.out
 gmon.out.back
+**.txt
+**.back

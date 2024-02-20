@@ -21,7 +21,6 @@ ABSL_FLAG(std::string, socket_path, "/tmp/unix_socket_example.sock",
 
 constexpr char kContentLength[] = "Content-Length: ";
 
-
 constexpr char kOkHeader[] =
     "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ";
 constexpr size_t kOkHeaderLength = sizeof(kOkHeader);
@@ -32,7 +31,7 @@ constexpr size_t kBadRequestHeaderLength = sizeof(kBadRequestHeader);
 
 constexpr char kNotFoundHeaderLength[] = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
 constexpr size_t NotFoundHeaderLength = sizeof(kNotFoundHeaderLength);
-constexpr int kThreadCount = 50;
+constexpr int kProcessThreadCount = 50;
 
 namespace {
 void ProcessRequest(std::vector<char> &&buffer, int num_read, int client_fd) {
@@ -111,7 +110,7 @@ void SetNonBlocking(int socket_fd) {
 int main(int argc, char *argv[]) {
   absl::ParseCommandLine(argc, argv);
   CHECK(rinha::InitializeDb());
-  ThreadPool pool(kThreadCount);
+  ThreadPool pool(kProcessThreadCount);
 
   int server_fd, client_fd;
   struct sockaddr_un server_addr, client_addr;

@@ -1,6 +1,7 @@
 #include "rinha/sqlite_database.h"
 
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "glog/logging.h"
 #include "sqlite3.h"
 
@@ -22,6 +23,8 @@ constexpr char kInsertSql[] =
 constexpr char kSelectSql[] = "SELECT DATA FROM Users WHERE ID = ?;";
 
 constexpr char kDatabasePath[] = "rinha.db";
+
+absl::Mutex customer_write_mutexs[5];
 
 thread_local sqlite3 *dbs[5];
 thread_local sqlite3_stmt *insert_prepared_stmts[5];
@@ -312,6 +315,7 @@ TransactionResult DbExecuteTransaction(int id, Transaction &&transaction) {
   int current_retry = 0;
   bool success = false;
   bool begin_transaction;
+  customer_write_mutexs[id].Lock();
   while (current_retry < max_retry && !success) {
     current_retry++;
     if (current_retry > 1) {
@@ -322,7 +326,8 @@ TransactionResult DbExecuteTransaction(int id, Transaction &&transaction) {
       DLOG(WARNING) << "Retrying transaction" << std::endl;
       std::this_thread::sleep_for(
           std::chrono::milliseconds(milliseconds_between_retries));
-      milliseconds_between_retries = std::min(2*milliseconds_between_retries, 3000);
+      milliseconds_between_retries =
+          std::min(2 * milliseconds_between_retries, 3000);
     }
 
     begin_transaction = false;
@@ -339,6 +344,7 @@ TransactionResult DbExecuteTransaction(int id, Transaction &&transaction) {
 
     if (customer.balance + transaction.value < -customer.limit) {
       RollbackTransaction(db);
+      customer_write_mutexs[id].Unlock();
       return TransactionResult::LIMIT_EXCEEDED;
     }
 
@@ -362,6 +368,8 @@ TransactionResult DbExecuteTransaction(int id, Transaction &&transaction) {
 
     success = true;
   }
+
+  customer_write_mutexs[id].Unlock();
 
   if (!success) {
     LOG(ERROR) << "FAILED TRANSACTION";
