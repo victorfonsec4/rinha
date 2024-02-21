@@ -6,7 +6,7 @@ services:
     # publicamente acessível! Ex.: hub.docker.com
     image: vifonsec/rinha:latest
     hostname: api01
-    command: ["./main", "--socket_path", "/tmp/unix_socket_example.sock", "--num_process_threads", "100", "--num_connection_threads", "10"]
+    command: ["./main"]
     volumes:
       - /tmp:/tmp
       - /var/run/postgresql:/var/run/postgresql
@@ -23,7 +23,7 @@ services:
     # Essa sintaxe reusa o que foi declarado em 'api01'.
     <<: *api
     hostname: api02
-    command: ["./main", "--socket_path", "/tmp/unix_socket_example2.sock", "--num_process_threads", "100", "--num_connection_threads", "10"]
+    command: ["./main"]
 
   nginx:
     image: vifonsec/nginx2:latest
