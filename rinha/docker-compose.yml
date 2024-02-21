@@ -5,8 +5,8 @@ services:
     # Lembre-se de que seu serviço HTTP deve estar hospedado num repositório
     # publicamente acessível! Ex.: hub.docker.com
     image: vifonsec/rinha:latest
+    entrypoint: ["./start_main.sh"]
     hostname: api01
-    command: ["./main"]
     volumes:
       - /tmp:/tmp
       - /var/run/postgresql:/var/run/postgresql
@@ -23,7 +23,7 @@ services:
     # Essa sintaxe reusa o que foi declarado em 'api01'.
     <<: *api
     hostname: api02
-    command: ["./main"]
+    command: ["--socket_path=/tmp/unix_socket_example2.sock"]
 
   nginx:
     image: vifonsec/nginx2:latest

@@ -2,4 +2,4 @@
 
 sleep 5
 
-./main
+./main "$@"
