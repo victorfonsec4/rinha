@@ -56,12 +56,6 @@ Customer DeserializeCustomer(const pqxx::bytes& buffer) {
   return customer;
 }
 
-std::vector<uint8_t> SerializeCustomer(const Customer &customer) {
-  std::vector<uint8_t> buffer(sizeof(Customer));
-  std::memcpy(buffer.data(), &customer, sizeof(customer));
-  return buffer;
-}
-
 bool LazyInitializeDb() {
   try{
     DLOG(INFO) << "Opening database" << std::endl;
@@ -119,8 +113,11 @@ bool InsertCustomer(const Customer &customer, int id, pqxx::work &W) {
     }
   }
 
-  std::vector<uint8_t> serialized_data = SerializeCustomer(customer);
-  W.exec_prepared(kInsertPreparedStmt, id, pqxx::binary_cast(serialized_data));
+  const std::uint8_t *bytes = reinterpret_cast<const std::uint8_t *>(&customer);
+  W.exec_prepared(
+      kInsertPreparedStmt, id, pqxx::binary_cast(bytes, sizeof(customer)));
+
+  // W.exec_prepared(kInsertPreparedStmt, id, pqxx::binary_cast(serialized_data));
 
   return true;
 }
