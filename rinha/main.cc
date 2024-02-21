@@ -5,7 +5,6 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-#include "ThreadPool.h"
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/flags/usage.h"
@@ -13,6 +12,8 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "glog/logging.h"
+#include "ThreadPool.h"
+#include "simdjson.h"
 
 #include "rinha/request_handler.h"
 #include "rinha/moustique.h"
@@ -38,11 +39,15 @@ constexpr size_t kBadRequestHeaderLength = sizeof(kBadRequestHeader);
 constexpr char kNotFoundHeaderLength[] = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
 constexpr size_t NotFoundHeaderLength = sizeof(kNotFoundHeaderLength);
 
+constexpr int kBufferWrittableSize = 1024;
+constexpr int kBufferTotalSize = kBufferWrittableSize + simdjson::SIMDJSON_PADDING;
+
 namespace {
 void ProcessRequest(std::vector<char> &&buffer, ssize_t num_read,
                     std::function<ssize_t(char *, int)> read,
                     std::function<ssize_t(const char *, int)> write) {
-  if (num_read >= buffer.size() - 1) {
+  // TODO: We might be able to skip this.
+  if (num_read >= kBufferWrittableSize - 1) {
     LOG(WARNING) << "Message too big";
     // discard the rest of the message in the socket
     while (num_read >= buffer.size() - 1) {
@@ -147,8 +152,8 @@ int main(int argc, char *argv[]) {
   }
 
   auto handle_lambda = [](int client_fd, auto read, auto write) {
-    std::vector<char> buffer(1024);
-    ssize_t num_read = read(buffer.data(), buffer.size() - 1);
+    std::vector<char> buffer(kBufferTotalSize);
+    ssize_t num_read = read(buffer.data(), kBufferWrittableSize - 1);
     if (num_read == -1) {
       DLOG(ERROR) << "Failed to read from socket";
       close(client_fd);

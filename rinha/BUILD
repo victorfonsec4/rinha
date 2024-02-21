@@ -5,6 +5,7 @@ cc_binary(
         "@abseil//:abseil",
         "@glog//:glog",
         "@threadpool//:threadpool",
+        "@simdjson//:simdjson",
         ":request_handler",
         ":postgres_database",
         ":moustique",

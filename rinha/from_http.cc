@@ -22,11 +22,11 @@ constexpr char kPostBeginBody[] = "\r\n\r\n";
 thread_local simdjson::ondemand::parser parser;
 
 bool ParseJsonBody(absl::string_view body, Transaction *transaction) {
-  // TODO: This copies the body again, maybe find a way to avoid this
-  simdjson::padded_string p(body.data(), body.size());
   simdjson::ondemand::document doc;
 
-  auto error = parser.iterate(p).get(doc);
+  // TODO: we probably don' need to call strlen here, pass in the size.
+  auto error = parser.iterate(
+      body.data(), strlen(body.data()), sizeof(body.data())).get(doc);
   if (error) {
     DLOG(ERROR) << "Error parsing json: " << error << std::endl;
     return false;
@@ -122,6 +122,8 @@ bool ParseJsonBody(absl::string_view body, Transaction *transaction) {
 } // namespace
 
 bool FromHttp(absl::string_view http, Request *request) {
+  // TODO: We might be able to optimize this by going straight to the
+  // characters.
   size_t first_end_line = http.find("\r\n");
   if (first_end_line == std::string::npos) {
     DLOG(ERROR) << "No end of line found" << std::endl;
@@ -150,6 +152,7 @@ bool FromHttp(absl::string_view http, Request *request) {
       return false;
     }
 
+    // TODO: Can we avoid this copy?
     request->id =
         std::stoi(std::string(http.substr(id_idx, id_end_idx - id_idx)));
     request->type = RequestType::BALANCE;
@@ -188,7 +191,8 @@ bool FromHttp(absl::string_view http, Request *request) {
     return false;
   }
 
-  std::string json_body = std::string(http.substr(begin_body_idx + 4));
+  absl::string_view json_body(http.data() + begin_body_idx + 4,
+                              http.size() - (begin_body_idx + 4));
   DLOG(INFO) << "json_body: " << json_body << std::endl;
 
   if (!ParseJsonBody(json_body, &request->transaction)) {
