@@ -4,9 +4,9 @@
 #include "rinha/structs.h"
 
 namespace rinha {
-bool InitializeDb();
-bool DbGetCustomer(int id, Customer *customer);
-TransactionResult DbExecuteTransaction(int id, Transaction &&transaction);
+bool SqliteInitializeDb();
+bool SqliteDbGetCustomer(int id, Customer *customer);
+TransactionResult SqliteDbExecuteTransaction(int id, Transaction &&transaction);
 } // namespace rinha
 
 #endif

@@ -4,7 +4,8 @@ $bazel run -c opt --copt=-O2 --copt=-DNDEBUG //rinha:main
 
 * Running nginx
 
-chmod 777 /tmp/unix_socket_example.sock && sudo docker run -p 9999:9999 -v /tmp:/tmp nginx:latest
+$ sudo docker build -t vifonsec/nginx:latest -f nginx.dockerfile .
+$ sudo docker run -p 9999:9999 -v /tmp:/tmp vifonsec/nginx:latest
 
 * Profiling
 
@@ -17,3 +18,8 @@ $gprof bazel-bin/rinha/main gmon.out > analysis.txt
 * building docker image
 
 $ bazel build -c opt --copt=-O2 --copt=-DNDEBUG //rinha:main && cp ../bazel-bin/rinha/main . && sudo docker build -f main.dockerfile -t vifonsec/rinha:latest -f main.dockerfile .
+
+* Running postgres
+
+$sudo docker build -t vifonsec/postgres:latest -f postgres.dockerfile .
+$sudo docker run -p 5432:5432 -v /tmp:/tmp vifonsec/postgres:latest

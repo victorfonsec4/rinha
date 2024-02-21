@@ -6,7 +6,8 @@ cc_binary(
         "@glog//:glog",
         "@threadpool//:threadpool",
         ":request_handler",
-        ":sqlite_database",
+        ":postgres_database",
+        ":moustique",
     ]
 )
 
@@ -37,6 +38,19 @@ cc_library(
         "@abseil//:abseil",
         "@glog//:glog",
         "@sqlite3//:sqlite3",
+        ":structs",
+        ":to_json",
+    ]
+)
+
+cc_library(
+    name = "postgres_database",
+    hdrs = ["postgres_database.h"],
+    srcs = ["postgres_database.cc"],
+    deps = [
+        "@abseil//:abseil",
+        "@glog//:glog",
+        "@libpqxx//:libpqxx",
         ":structs",
         ":to_json",
     ]
@@ -74,9 +88,19 @@ cc_library(
         "@abseil//:abseil",
         "@glog//:glog",
         ":structs",
-        ":in_memory_database",
         ":to_json",
         ":from_http",
-        ":sqlite_database",
+        ":postgres_database",
+    ]
+)
+
+
+cc_library(
+    name = "moustique",
+    srcs = ["moustique.h"],
+    deps = [
+        "@abseil//:abseil",
+        "@glog//:glog",
+        "@boost//:boost",
     ]
 )

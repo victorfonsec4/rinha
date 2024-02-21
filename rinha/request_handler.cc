@@ -5,9 +5,8 @@
 #include "glog/logging.h"
 
 #include "rinha/from_http.h"
-// #include "rinha/in_memory_database.h"
 #include "rinha/to_json.h"
-#include "rinha/sqlite_database.h"
+#include "rinha/postgres_database.h"
 
 namespace rinha {
 
@@ -30,7 +29,7 @@ Result HandleRequest(const std::vector<char> buffer,
     // }
 
     Customer customer;
-    bool success = DbGetCustomer(request.id, &customer);
+    bool success = PostgresDbGetCustomer(request.id, &customer);
     if (!success) {
       DLOG(ERROR) << "Customer not found" << std::endl;
       return Result::NOT_FOUND;
@@ -51,11 +50,9 @@ Result HandleRequest(const std::vector<char> buffer,
                sizeof(request.transaction.timestamp) - 1);
   request.transaction.timestamp[sizeof(request.transaction.timestamp) -1 ] = '\0';
 
-  // TransactionResult result =
-  //     ExecuteTransaction(request.id, std::move(request.transaction));
-
+  Customer customer;
   TransactionResult result =
-      DbExecuteTransaction(request.id, std::move(request.transaction));
+      PostgresDbExecuteTransaction(request.id, std::move(request.transaction), &customer);
   if (result == TransactionResult::NOT_FOUND) {
     DLOG(ERROR) << "Customer not found" << std::endl;
     return Result::NOT_FOUND;
@@ -66,12 +63,6 @@ Result HandleRequest(const std::vector<char> buffer,
     return Result::INVALID_REQUEST;
   }
 
-  Customer customer;
-  success = DbGetCustomer(request.id, &customer);
-  if (!success) {
-    DLOG(ERROR) << "Customer not found" << std::endl;
-    return Result::NOT_FOUND;
-  }
   *response_body = TransactionResultToJson(customer);
   return Result::SUCCESS;
 }

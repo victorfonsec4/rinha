@@ -1,5 +1,7 @@
 #include "rinha/sqlite_database.h"
 
+#include <thread>
+
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "glog/logging.h"
@@ -7,7 +9,6 @@
 
 #include "rinha/structs.h"
 #include "rinha/to_json.h"
-#include <thread>
 
 namespace rinha {
 namespace {
@@ -225,7 +226,7 @@ void RollbackTransaction(sqlite3 *db) {
 
 } // namespace
 
-bool InitializeDb() {
+bool SqliteInitializeDb() {
 
   for (int i = 0; i < 5; i++) {
     LazyInitializeDb(i);
@@ -279,7 +280,7 @@ bool InitializeDb() {
   return true;
 }
 
-bool DbGetCustomer(int id, Customer *customer) {
+bool SqliteDbGetCustomer(int id, Customer *customer) {
   if (id > 5 || id < 1) {
     return false;
   }
@@ -293,7 +294,7 @@ bool DbGetCustomer(int id, Customer *customer) {
   return true;
 }
 
-TransactionResult DbExecuteTransaction(int id, Transaction &&transaction) {
+TransactionResult SqliteDbExecuteTransaction(int id, Transaction &&transaction) {
   if (id > 5 || id < 1) {
     return TransactionResult::NOT_FOUND;
   }

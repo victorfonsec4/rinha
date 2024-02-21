@@ -15,10 +15,17 @@
 #include "glog/logging.h"
 
 #include "rinha/request_handler.h"
-#include "rinha/sqlite_database.h"
+#include "rinha/moustique.h"
+#include "rinha/postgres_database.h"
 
 ABSL_FLAG(std::string, socket_path, "/tmp/unix_socket_example.sock",
           "path to socket file");
+
+ABSL_FLAG(int, num_process_threads, 50,
+          "Number of threads for requesting processing");
+
+ABSL_FLAG(int, num_connection_threads, 5,
+          "Number of threads for handling connections");
 
 constexpr char kOkHeader[] =
     "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ";
@@ -30,29 +37,28 @@ constexpr size_t kBadRequestHeaderLength = sizeof(kBadRequestHeader);
 
 constexpr char kNotFoundHeaderLength[] = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
 constexpr size_t NotFoundHeaderLength = sizeof(kNotFoundHeaderLength);
-constexpr int kProcessThreadCount = 50;
-constexpr int kConnectionThreadCount = 5;
 
 namespace {
-void ProcessRequest(std::vector<char> &&buffer, int num_read, int client_fd) {
+void ProcessRequest(std::vector<char> &&buffer, ssize_t num_read,
+                    std::function<ssize_t(char *, int)> read,
+                    std::function<ssize_t(const char *, int)> write) {
   if (num_read >= buffer.size() - 1) {
-    LOG(WARNING) << "Message too big" << std::endl;
+    LOG(WARNING) << "Message too big";
     // discard the rest of the message in the socket
     while (num_read >= buffer.size() - 1) {
-      num_read = read(client_fd, buffer.data(), buffer.size());
+      num_read = read(buffer.data(), buffer.size());
     }
     ssize_t result =
-        write(client_fd, kBadRequestHeader, kBadRequestHeaderLength);
+        write(kBadRequestHeader, kBadRequestHeaderLength);
     if (result == -1) {
-      DLOG(ERROR) << "Failed to send response" << std::endl;
+      DLOG(ERROR) << "Failed to send response";
     }
-    close(client_fd);
     return;
   }
 
   buffer[num_read] = '\0';
-  DLOG(INFO) << "Received " << num_read << " bytes" << std::endl;
-  DLOG(INFO) << "Received request: " << std::endl << buffer.data() << std::endl;
+  DLOG(INFO) << "Received " << num_read << " bytes";
+  DLOG(INFO) << "Received request: " << std::endl << buffer.data();
 
   std::string response_body;
   rinha::Result result = rinha::HandleRequest(buffer, &response_body);
@@ -84,24 +90,21 @@ void ProcessRequest(std::vector<char> &&buffer, int num_read, int client_fd) {
   }
 
   // Send response
-  DLOG(INFO) << "Sending response: " << std::endl << http_response << std::endl;
-  ssize_t r = write(client_fd, http_response, http_response_length);
+  DLOG(INFO) << "Sending response: " << std::endl << http_response;
+  ssize_t r = write(http_response, http_response_length);
   if (r == -1) {
-    DLOG(ERROR) << "Failed to send response" << std::endl;
+    DLOG(ERROR) << "Failed to send response";
   }
-
-  // Close connection
-  close(client_fd);
 }
 
 void SetNonBlocking(int socket_fd) {
   int flags = fcntl(socket_fd, F_GETFL, 0);
   if (flags == -1) {
-    std::cerr << "Failed to get socket flags" << std::endl;
+    std::cerr << "Failed to get socket flags";
     exit(EXIT_FAILURE);
   }
   if (fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
-    std::cerr << "Failed to set non-blocking socket" << std::endl;
+    std::cerr << "Failed to set non-blocking socket";
     exit(EXIT_FAILURE);
   }
 }
@@ -109,25 +112,26 @@ void SetNonBlocking(int socket_fd) {
 
 int main(int argc, char *argv[]) {
   absl::ParseCommandLine(argc, argv);
-  CHECK(rinha::InitializeDb());
-  ThreadPool process_pool(kProcessThreadCount);
-  ThreadPool connection_pool(kConnectionThreadCount);
+  CHECK(rinha::PostgresInitializeDb());
 
-  int server_fd, client_fd;
-  struct sockaddr_un server_addr, client_addr;
-  socklen_t client_addr_size = sizeof(client_addr);
+  int num_process_threads = absl::GetFlag(FLAGS_num_process_threads);
+  LOG(INFO) << "Number of process threads: " << num_process_threads;
+  ThreadPool process_pool(num_process_threads);
+
+  int server_fd;
+  struct sockaddr_un server_addr;
 
   // Create socket
   server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (server_fd == -1) {
-    LOG(ERROR) << "Failed to create socket" << std::endl;
+    LOG(ERROR) << "Failed to create socket";
     return -1;
   }
 
   SetNonBlocking(server_fd);
 
   std::string socket_path = absl::GetFlag(FLAGS_socket_path);
-  LOG(INFO) << "Socket path: " << socket_path << std::endl;
+  LOG(INFO) << "Socket path: " << socket_path;
 
   // Bind socket to socket path
   server_addr.sun_family = AF_UNIX;
@@ -136,73 +140,29 @@ int main(int argc, char *argv[]) {
   unlink(socket_path.c_str()); // Remove the socket if it already exists
   if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) ==
       -1) {
-    LOG(ERROR) << "Bind failed" << std::endl;
+    LOG(ERROR) << "Bind failed";
+    LOG(ERROR) << "Error: " << strerror(errno);
     close(server_fd);
     return -1;
   }
 
-  // Listen for connections
-  if (listen(server_fd, 5) == -1) {
-    DLOG(ERROR) << "Listen failed" << std::endl;
-    close(server_fd);
-    return -1;
-  }
-
-  DLOG(INFO) << "Server listening on " << socket_path << std::endl;
-
-  const int MAX_EVENTS = 50;
-  struct epoll_event ev, events[MAX_EVENTS];
-  int epollfd = epoll_create1(0);
-  if (epollfd == -1) {
-    LOG(ERROR) << "Failed to create epoll file descriptor" << std::endl;
-    return -1;
-  }
-
-  ev.events = EPOLLIN;
-  ev.data.fd = server_fd;
-  if (epoll_ctl(epollfd, EPOLL_CTL_ADD, server_fd, &ev) == -1) {
-    LOG(ERROR) << "Failed to add file descriptor to epoll" << std::endl;
-    close(server_fd);
-    return -1;
-  }
-
-  // Accept connections
-  while (true) {
-    int nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
-    if (nfds == -1) {
-      LOG(ERROR) << "Epoll wait failed" << std::endl;
-      break;
+  auto handle_lambda = [](int client_fd, auto read, auto write) {
+    std::vector<char> buffer(1024);
+    ssize_t num_read = read(buffer.data(), buffer.size() - 1);
+    if (num_read == -1) {
+      DLOG(ERROR) << "Failed to read from socket";
+      close(client_fd);
+      return;
     }
 
-    for (int n = 0; n < nfds; ++n) {
-      if (events[n].data.fd == server_fd) {
-        client_fd = accept(server_fd, (struct sockaddr *)&client_addr,
-                           &client_addr_size);
-        if (client_fd == -1) {
-          LOG(ERROR) << "Accept failed: " << strerror(errno) << std::endl;
-          continue;
-        }
+    ProcessRequest(std::move(buffer), num_read, read, write);
+  };
 
-        // SetNonBlocking(client_fd);
 
-        process_pool.enqueue([client_fd]() {
-          std::vector<char> buffer(1024);
-          ssize_t num_read = read(client_fd, buffer.data(), buffer.size() - 1);
-          if (num_read == -1) {
-            DLOG(ERROR) << "Failed to read from socket" << std::endl;
-            close(client_fd);
-            return;
-          }
-
-          ProcessRequest(std::move(buffer), num_read, client_fd);
-        });
-      }
-    }
-  }
-
-  // Cleanup
-  close(server_fd);
-  unlink(socket_path.c_str());
+  int num_connection_threads = absl::GetFlag(FLAGS_num_connection_threads);
+  LOG(INFO) << "Number of connection threads: " << num_connection_threads;
+  moustique_listen_fd(server_fd, num_connection_threads,
+                      handle_lambda);
 
   return 0;
 }
