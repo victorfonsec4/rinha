@@ -15,6 +15,7 @@ namespace rinha {
 namespace {
 constexpr char kInsertPreparedStmt[] = "insert_stmt";
 constexpr char kSelectPreparedStmt[] = "select_stmt";
+constexpr char kSelectForSharePreparedStmt[] = "select_for_share_stmt";
 
 absl::Mutex customer_write_mutexs[5];
 
@@ -72,11 +73,15 @@ bool LazyInitializeDb() {
 bool LazyInitializeStatement() {
   try {
     pqxx::work W(db);
+
+    db.prepare(kSelectForSharePreparedStmt, "SELECT data FROM Users WHERE id = $1 FOR UPDATE");
     db.prepare(kInsertPreparedStmt,
                "INSERT INTO Users (id, data) VALUES ($1, $2) ON CONFLICT (id) "
                "DO UPDATE SET data = excluded.data");
 
+
     db.prepare(kSelectPreparedStmt, "SELECT data FROM Users WHERE id = $1");
+
   } catch (const pqxx::failure &e) {
     LOG(ERROR) << "Exception occurred trying to open the db." << e.what();
     return false;
@@ -117,8 +122,6 @@ bool InsertCustomer(const Customer &customer, int id, pqxx::work &W) {
   W.exec_prepared(
       kInsertPreparedStmt, id, pqxx::binary_cast(bytes, sizeof(customer)));
 
-  // W.exec_prepared(kInsertPreparedStmt, id, pqxx::binary_cast(serialized_data));
-
   return true;
 }
 
@@ -150,7 +153,7 @@ bool ReadCustomerTransactional(const int id, Customer *customer, pqxx::work &W) 
     }
   }
 
-  pqxx::result R = W.exec_prepared(kSelectPreparedStmt, id);
+  pqxx::result R = W.exec_prepared(kSelectForSharePreparedStmt, id);
   const pqxx::row row = R[0];
   // TODO: Are there any copies happening here? Can we do away with the
   // conversion?
