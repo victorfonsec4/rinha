@@ -7,6 +7,7 @@
 #include "rinha/from_http.h"
 #include "rinha/to_json.h"
 #include "rinha/postgres_database.h"
+#include "rinha/time.h"
 
 namespace rinha {
 
@@ -20,14 +21,9 @@ Result HandleRequest(const std::vector<char> buffer,
     return Result::INVALID_REQUEST;
   }
 
-  if (request.type == RequestType::BALANCE) {
-    // Customer *customer;
-    // customer = GetCustomer(request.id);
-    // if (customer == nullptr) {
-    //   DLOG(ERROR) << "Customer not found" << std::endl;
-    //   return Result::NOT_FOUND;
-    // }
+  std::string current_time = GetTime();
 
+  if (request.type == RequestType::BALANCE) {
     Customer customer;
     bool success = PostgresDbGetCustomer(request.id, &customer);
     if (!success) {
@@ -35,18 +31,16 @@ Result HandleRequest(const std::vector<char> buffer,
       return Result::NOT_FOUND;
     }
 
-    std::string timestamp = absl::FormatTime(absl::Now());
-    *response_body = CustomerToJson(customer, std::move(timestamp));
+    *response_body = CustomerToJson(customer, std::move(current_time));
     return Result::SUCCESS;
   }
 
-  // TODO: can we avoid this copy?
-  std::string time_str = absl::FormatTime(absl::Now());
-  if (time_str.size() >= sizeof(request.transaction.timestamp)) {
+  // TODO: we can prob get rid of this check.
+  if (current_time.size() >= sizeof(request.transaction.timestamp)) {
     LOG(ERROR) << "TIMESTAMP TOO LONG" << std::endl;
     return Result::INVALID_REQUEST;
   }
-  std::strncpy(request.transaction.timestamp, time_str.data(),
+  std::strncpy(request.transaction.timestamp, current_time.data(),
                sizeof(request.transaction.timestamp) - 1);
   request.transaction.timestamp[sizeof(request.transaction.timestamp) -1 ] = '\0';
 

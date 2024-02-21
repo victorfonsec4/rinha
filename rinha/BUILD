@@ -92,6 +92,7 @@ cc_library(
         ":to_json",
         ":from_http",
         ":postgres_database",
+        ":time",
     ]
 )
 
@@ -103,5 +104,15 @@ cc_library(
         "@abseil//:abseil",
         "@glog//:glog",
         "@boost//:boost",
+    ]
+)
+
+cc_library(
+    name = "time",
+    hdrs = ["time.h"],
+    srcs = ["time.cc"],
+    deps = [
+        "@abseil//:abseil",
+        "@glog//:glog",
     ]
 )
