@@ -19,8 +19,8 @@ struct Customer {
   int limit;
   int balance;
   Transaction transactions[10];
-  int transaction_count;
-  int next_transaction_index;
+  char transaction_count;
+  char next_transaction_index;
 };
 
 struct Request {
