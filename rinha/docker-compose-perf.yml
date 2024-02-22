@@ -1,0 +1,50 @@
+version: "3.5"
+
+services:
+  nginx:
+    image: vifonsec/nginx:latest
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - /tmp:/tmp
+    ports:
+        # Obrigatório expor/usar a porta 9999 no load balancer!
+      - "9999:9999"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.6"
+          memory: "200MB"
+    network_mode: "host"
+
+  db:
+    image: vifonsec/postgres:latest
+    volumes:
+      - /tmp:/tmp
+      - /var/run/postgresql:/var/run/postgresql
+    ports:
+      - "5432:5432"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.2"
+          memory: "150MB"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+    network_mode: "host"
+
+
+
+# O uso do modo `bridge` deve ser adequado à carga que será usada no teste.
+# A edição anterior se beneficiou do modo host pois o volume de requisições
+# era relativamente alto e a virtualização da rede se tornou um gargalo, mas
+# este modo é mais complexo de ser configurado. Fique à vontade para usar o
+# modo que quiser desde que não conflite com portas trivialmente usadas em um
+# SO.
+# networks:
+#   default:
+#     driver: bridge
+#     name: rinha-nginx-2024q1
