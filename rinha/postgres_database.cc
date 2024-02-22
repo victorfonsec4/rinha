@@ -51,9 +51,9 @@ constexpr Customer kInitialCustomers[] = {
 
 };
 
-Customer DeserializeCustomer(const pqxx::bytes& buffer) {
+Customer DeserializeCustomer(pqxx::bytes &&buffer) {
   Customer customer;
-  std::memcpy(&customer, buffer.data(), sizeof(Customer));
+  customer = std::move(*reinterpret_cast<Customer *>(buffer.data()));
   return customer;
 }
 
@@ -139,7 +139,7 @@ bool ReadCustomerNonTransactional(const int id, Customer *customer) {
   const pqxx::row row = R[0];
   // TODO: Are there any copies happening here? Can we do away with the conversion?
   pqxx::bytes  serialized_data = row[0].as<pqxx::bytes>();
-  *customer = DeserializeCustomer(serialized_data);
+  *customer = DeserializeCustomer(std::move(serialized_data));
 
   return true;
 }
@@ -159,7 +159,7 @@ bool ReadCustomerTransactional(const int id, Customer *customer, pqxx::work &W) 
   // conversion?
   pqxx::bytes serialized_data =
       row[0].as<pqxx::bytes>();
-  *customer = DeserializeCustomer(serialized_data);
+  *customer = DeserializeCustomer(std::move(serialized_data));
 
   return true;
 }
