@@ -5,6 +5,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include "ThreadPool.h"
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/flags/usage.h"
@@ -12,12 +13,12 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "glog/logging.h"
-#include "ThreadPool.h"
 #include "simdjson.h"
 
-#include "rinha/request_handler.h"
 #include "rinha/moustique.h"
 #include "rinha/postgres_database.h"
+#include "rinha/request_handler.h"
+#include "rinha/zookeeper.h"
 
 ABSL_FLAG(std::string, socket_path, "/tmp/unix_socket_example.sock",
           "path to socket file");
@@ -116,8 +117,13 @@ void SetNonBlocking(int socket_fd) {
 } // namespace
 
 int main(int argc, char *argv[]) {
+
+  LOG(INFO) << "Starting server";
+  DLOG(INFO) << "Size of customer: " << sizeof(rinha::Customer);
   absl::ParseCommandLine(argc, argv);
+
   CHECK(rinha::PostgresInitializeDb());
+  CHECK(rinha::InitializeZooKeeper());
 
   int num_process_threads = absl::GetFlag(FLAGS_num_process_threads);
   LOG(INFO) << "Number of process threads: " << num_process_threads;

@@ -2,6 +2,7 @@
 
 #include <thread>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "glog/logging.h"
@@ -9,7 +10,7 @@
 
 #include "rinha/structs.h"
 #include "rinha/to_json.h"
-
+#include "zookeeper.h"
 
 namespace rinha {
 namespace {
@@ -58,14 +59,13 @@ Customer DeserializeCustomer(pqxx::bytes &&buffer) {
 }
 
 bool LazyInitializeDb() {
-  try{
+  try {
     DLOG(INFO) << "Opening database" << std::endl;
     db = pqxx::connection("postgres://rinha@localhost:5432/mydb");
-  } catch (const pqxx::failure& e) {
+  } catch (const pqxx::failure &e) {
     LOG(ERROR) << "Exception occurred trying to open the db." << e.what();
     return false;
   }
-
 
   return true;
 }
@@ -74,11 +74,11 @@ bool LazyInitializeStatement() {
   try {
     pqxx::work W(db);
 
-    db.prepare(kSelectForSharePreparedStmt, "SELECT data FROM Users WHERE id = $1 FOR UPDATE");
+    db.prepare(kSelectForSharePreparedStmt,
+               "SELECT data FROM Users WHERE id = $1 FOR UPDATE");
     db.prepare(kInsertPreparedStmt,
                "INSERT INTO Users (id, data) VALUES ($1, $2) ON CONFLICT (id) "
                "DO UPDATE SET data = excluded.data");
-
 
     db.prepare(kSelectPreparedStmt, "SELECT data FROM Users WHERE id = $1");
 
@@ -119,8 +119,8 @@ bool InsertCustomer(const Customer &customer, int id, pqxx::work &W) {
   }
 
   const std::uint8_t *bytes = reinterpret_cast<const std::uint8_t *>(&customer);
-  W.exec_prepared(
-      kInsertPreparedStmt, id, pqxx::binary_cast(bytes, sizeof(customer)));
+  W.exec_prepared(kInsertPreparedStmt, id,
+                  pqxx::binary_cast(bytes, sizeof(customer)));
 
   return true;
 }
@@ -137,37 +137,17 @@ bool ReadCustomerNonTransactional(const int id, Customer *customer) {
   pqxx::nontransaction N(db);
   pqxx::result R = N.exec_prepared(kSelectPreparedStmt, id);
   const pqxx::row row = R[0];
-  // TODO: Are there any copies happening here? Can we do away with the conversion?
-  pqxx::bytes  serialized_data = row[0].as<pqxx::bytes>();
-  *customer = DeserializeCustomer(std::move(serialized_data));
-
-  return true;
-}
-
-bool ReadCustomerTransactional(const int id, Customer *customer, pqxx::work &W) {
-  if (!initialized) {
-    bool success = InitializeDbAndStatements();
-    if (!success) {
-      LOG(ERROR) << "Failed to init db or statements" << std::endl;
-      return false;
-    }
-  }
-
-  pqxx::result R = W.exec_prepared(kSelectForSharePreparedStmt, id);
-  const pqxx::row row = R[0];
   // TODO: Are there any copies happening here? Can we do away with the
   // conversion?
-  pqxx::bytes serialized_data =
-      row[0].as<pqxx::bytes>();
+  pqxx::bytes serialized_data = row[0].as<pqxx::bytes>();
   *customer = DeserializeCustomer(std::move(serialized_data));
 
   return true;
 }
-
 } // namespace
 
 bool PostgresInitializeDb() {
-  if(!InitializeDbAndStatements()) {
+  if (!InitializeDbAndStatements()) {
     LOG(ERROR) << "Failed to initialize db";
     return false;
   }
@@ -177,14 +157,14 @@ bool PostgresInitializeDb() {
       pqxx::work w(db);
       InsertCustomer(kInitialCustomers[i], i, w);
       w.commit();
-    } catch (const pqxx::failure& e) {
-      LOG(ERROR) << "Exception occurred trying to open the db." << e.what();
+    } catch (const pqxx::failure &e) {
+      LOG(ERROR) << "Exception occurred trying to insert initial customers: "
+                 << e.what();
       return false;
     } catch (...) {
       LOG(ERROR) << "Exception occurred trying to open the db.";
       return false;
     }
-
   }
 
   return true;
@@ -204,8 +184,8 @@ bool PostgresDbGetCustomer(int id, Customer *customer) {
   return true;
 }
 
-
-TransactionResult PostgresDbExecuteTransaction(int id, Transaction &&transaction,
+TransactionResult PostgresDbExecuteTransaction(int id,
+                                               Transaction &&transaction,
                                                Customer *customer) {
   if (id > 5 || id < 1) {
     return TransactionResult::NOT_FOUND;
@@ -220,66 +200,43 @@ TransactionResult PostgresDbExecuteTransaction(int id, Transaction &&transaction
     }
   }
 
-  int max_retry = 100;
-  int milliseconds_between_retries = 1;
-  int current_retry = 0;
-  bool success = false;
   customer_write_mutexs[id].Lock();
-  while (current_retry < max_retry && !success) {
-    current_retry++;
-    if (current_retry > 1) {
-      DLOG(WARNING) << "Retrying transaction" << std::endl;
-      std::this_thread::sleep_for(
-          std::chrono::milliseconds(milliseconds_between_retries));
-      milliseconds_between_retries =
-          std::min(2 * milliseconds_between_retries, 3000);
-    }
+  absl::Cleanup mutex_unlocker = [&] { customer_write_mutexs[id].Unlock(); };
+  GetZooLock(id);
+  absl::Cleanup zoo_unlocker = [&] { ReleaseZooLock(id);};
 
-    pqxx::work W(db);
-
-    if (!ReadCustomerTransactional(id, customer, W)) {
-      DLOG(WARNING) << "Failed to read customer" << std::endl;
-      continue;
-    }
-
-    if (customer->balance + transaction.value < -customer->limit) {
-      customer_write_mutexs[id].Unlock();
-      return TransactionResult::LIMIT_EXCEEDED;
-    }
-
-    customer->balance += transaction.value;
-    customer->transactions[customer->next_transaction_index] =
-        std::move(transaction);
-    customer->next_transaction_index =
-        (customer->next_transaction_index + 1) % 10;
-    if (customer->transaction_count <= 10) {
-      customer->transaction_count++;
-    }
-
-    if (!InsertCustomer(*customer, id, W)) {
-      DLOG(WARNING) << "Failed to insert customer" << std::endl;
-      continue;
-    }
-
-    try {
-      W.commit();
-    } catch (...) {
-      DLOG(WARNING) << "Failed to commit transaction";
-      continue;
-
-    }
-    success = true;
+  if (!ReadCustomerNonTransactional(id, customer)) {
+    LOG(ERROR) << "Failed to read customer" << std::endl;
+    return TransactionResult::NOT_FOUND;
   }
 
-  customer_write_mutexs[id].Unlock();
+  if (customer->balance + transaction.value < -customer->limit) {
+    return TransactionResult::LIMIT_EXCEEDED;
+  }
 
-  if (!success) {
-    LOG(ERROR) << "FAILED TRANSACTION";
+  customer->balance += transaction.value;
+  customer->transactions[customer->next_transaction_index] =
+      std::move(transaction);
+  customer->next_transaction_index =
+      (customer->next_transaction_index + 1) % 10;
+  if (customer->transaction_count <= 10) {
+    customer->transaction_count++;
+  }
+
+  pqxx::work W(db);
+  if (!InsertCustomer(*customer, id, W)) {
+    LOG(ERROR) << "Failed to insert customer" << std::endl;
+    return TransactionResult::NOT_FOUND;
+  }
+
+  try {
+    W.commit();
+  } catch (...) {
+    LOG(ERROR) << "Failed to commit transaction";
     return TransactionResult::NOT_FOUND;
   }
 
   return TransactionResult::SUCCESS;
 }
 
-
-} //namespace rinha
+} // namespace rinha

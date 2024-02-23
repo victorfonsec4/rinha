@@ -33,8 +33,21 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-
     network_mode: "host"
+
+  zookeeper:
+    image: vifonsec/zookeeper:latest
+    ports:
+      - "2181:2181"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.2"
+          memory: "150MB"
+    network_mode: "host"
+
+
+
 
 
 

@@ -12,10 +12,11 @@ services:
       - /var/run/postgresql:/var/run/postgresql
     depends_on:
       - db
+      - zookeeper
     deploy:
       resources:
         limits:
-          cpus: "0.6"
+          cpus: "0.5"
           memory: "200MB"
     network_mode: "host"
 
@@ -39,7 +40,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.6"
+          cpus: "0.25"
           memory: "200MB"
     network_mode: "host"
 
@@ -53,15 +54,26 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.2"
+          cpus: "0.25"
           memory: "150MB"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
-
     network_mode: "host"
+
+  zookeeper:
+    image: vifonsec/zookeeper:latest
+    ports:
+      - "2181:2181"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.2"
+          memory: "150MB"
+    network_mode: "host"
+
 
 
 
