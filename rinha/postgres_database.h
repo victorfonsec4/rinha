@@ -4,8 +4,9 @@
 #include "rinha/structs.h"
 
 namespace rinha {
-  bool PostgresInitializeDb();
-  bool PostgresDbGetCustomer(int id, Customer *customer);
+
+bool PostgresInitializeDb();
+bool PostgresDbGetCustomer(int id, Customer *customer);
 TransactionResult PostgresDbExecuteTransaction(int id, Transaction &&transaction,
                                                Customer *customer);
 } //namespace rinha

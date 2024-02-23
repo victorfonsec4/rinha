@@ -7,7 +7,7 @@ cc_binary(
         "@threadpool//:threadpool",
         "@simdjson//:simdjson",
         ":request_handler",
-        ":postgres_database",
+        ":maria_database",
         ":moustique",
         ":shared_lock",
     ]
@@ -93,7 +93,7 @@ cc_library(
         ":structs",
         ":to_json",
         ":from_http",
-        ":postgres_database",
+        ":maria_database",
         ":time",
     ]
 )
@@ -127,5 +127,19 @@ cc_library(
     deps = [
         "@abseil//:abseil",
         "@glog//:glog",
+    ]
+)
+
+cc_library(
+    name = "maria_database",
+    hdrs = ["maria_database.h"],
+    srcs = ["maria_database.cc"],
+    deps = [
+        "@abseil//:abseil",
+        "@glog//:glog",
+        "@mariadb-connector-c//:mariadb-connector-c",
+        ":structs",
+        ":to_json",
+        ":shared_lock",
     ]
 )

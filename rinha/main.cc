@@ -16,7 +16,7 @@
 #include "simdjson.h"
 
 #include "rinha/moustique.h"
-#include "rinha/postgres_database.h"
+#include "rinha/maria_database.h"
 #include "rinha/request_handler.h"
 #include "rinha/shared_lock.h"
 
@@ -117,13 +117,10 @@ void SetNonBlocking(int socket_fd) {
 } // namespace
 
 int main(int argc, char *argv[]) {
+  absl::ParseCommandLine(argc, argv);
 
   LOG(INFO) << "Starting server";
   DLOG(INFO) << "Size of customer: " << sizeof(rinha::Customer);
-  absl::ParseCommandLine(argc, argv);
-
-  CHECK(rinha::PostgresInitializeDb());
-  CHECK(rinha::InitializeSharedLocks());
 
   int num_process_threads = absl::GetFlag(FLAGS_num_process_threads);
   LOG(INFO) << "Number of process threads: " << num_process_threads;
@@ -131,31 +128,36 @@ int main(int argc, char *argv[]) {
 
   int server_fd;
   struct sockaddr_un server_addr;
+  // Create socket and bind server socket
+  {
+    server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (server_fd == -1) {
+      LOG(ERROR) << "Failed to create socket";
+      return -1;
+    }
 
-  // Create socket
-  server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-  if (server_fd == -1) {
-    LOG(ERROR) << "Failed to create socket";
-    return -1;
+    SetNonBlocking(server_fd);
+
+    std::string socket_path = absl::GetFlag(FLAGS_socket_path);
+    LOG(INFO) << "Socket path: " << socket_path;
+
+    // Bind socket to socket path
+    server_addr.sun_family = AF_UNIX;
+    strncpy(server_addr.sun_path, socket_path.c_str(),
+            sizeof(server_addr.sun_path) - 1);
+    unlink(socket_path.c_str()); // Remove the socket if it already exists
+    if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) ==
+        -1) {
+      LOG(ERROR) << "Bind failed";
+      LOG(ERROR) << "Error: " << strerror(errno);
+      close(server_fd);
+      return -1;
+    }
   }
 
-  SetNonBlocking(server_fd);
-
-  std::string socket_path = absl::GetFlag(FLAGS_socket_path);
-  LOG(INFO) << "Socket path: " << socket_path;
-
-  // Bind socket to socket path
-  server_addr.sun_family = AF_UNIX;
-  strncpy(server_addr.sun_path, socket_path.c_str(),
-          sizeof(server_addr.sun_path) - 1);
-  unlink(socket_path.c_str()); // Remove the socket if it already exists
-  if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) ==
-      -1) {
-    LOG(ERROR) << "Bind failed";
-    LOG(ERROR) << "Error: " << strerror(errno);
-    close(server_fd);
-    return -1;
-  }
+  // Initialize database and locks
+  CHECK(rinha::MariaInitializeDb());
+  CHECK(rinha::InitializeSharedLocks());
 
   auto handle_lambda = [](int client_fd, auto read, auto write) {
     std::vector<char> buffer(kBufferTotalSize);

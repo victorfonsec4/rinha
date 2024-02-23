@@ -6,7 +6,7 @@
 
 #include "rinha/from_http.h"
 #include "rinha/to_json.h"
-#include "rinha/postgres_database.h"
+#include "rinha/maria_database.h"
 #include "rinha/time.h"
 
 namespace rinha {
@@ -25,7 +25,7 @@ Result HandleRequest(const std::vector<char> buffer,
 
   if (request.type == RequestType::BALANCE) {
     Customer customer;
-    bool success = PostgresDbGetCustomer(request.id, &customer);
+    bool success = MariaDbGetCustomer(request.id, &customer);
     if (!success) {
       DLOG(ERROR) << "Customer not found" << std::endl;
       return Result::NOT_FOUND;
@@ -46,7 +46,7 @@ Result HandleRequest(const std::vector<char> buffer,
 
   Customer customer;
   TransactionResult result =
-      PostgresDbExecuteTransaction(request.id, std::move(request.transaction), &customer);
+      MariaDbExecuteTransaction(request.id, std::move(request.transaction), &customer);
   if (result == TransactionResult::NOT_FOUND) {
     DLOG(ERROR) << "Customer not found" << std::endl;
     return Result::NOT_FOUND;

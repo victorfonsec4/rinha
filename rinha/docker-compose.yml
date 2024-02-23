@@ -9,14 +9,14 @@ services:
     hostname: api01
     volumes:
       - /tmp:/tmp
-      - /var/run/postgresql:/var/run/postgresql
+      - /run/mysqld:/run/mysqld
     depends_on:
       - db
     deploy:
       resources:
         limits:
           cpus: "0.5"
-          memory: "200MB"
+          memory: "50MB"
     network_mode: "host"
     ipc: host
     shm_size: 1M
@@ -42,25 +42,23 @@ services:
       resources:
         limits:
           cpus: "0.25"
-          memory: "200MB"
+          memory: "50MB"
     network_mode: "host"
 
   db:
-    image: vifonsec/postgres:latest
+    image: vifonsec/maria:latest
     volumes:
-      - /tmp:/tmp
-      - /var/run/postgresql:/var/run/postgresql
-    ports:
-      - "5432:5432"
+      - /run/mysqld:/run/mysqld
     deploy:
       resources:
         limits:
-          cpus: "0.25"
-          memory: "150MB"
+          cpus: "0.2"
+          memory: "350MB"
+    command: ['--sql-mode=NO_AUTO_VALUE_ON_ZERO']
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "rinha", "--password=mypassword"]
       interval: 5s
-      timeout: 5s
+      timeout: 30s
       retries: 5
     network_mode: "host"
 

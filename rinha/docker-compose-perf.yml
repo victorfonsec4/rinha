@@ -17,21 +17,19 @@ services:
     network_mode: "host"
 
   db:
-    image: vifonsec/postgres:latest
+    image: vifonsec/maria:latest
     volumes:
-      - /tmp:/tmp
-      - /var/run/postgresql:/var/run/postgresql
-    ports:
-      - "5432:5432"
+      - /run/mysqld:/run/mysqld
     deploy:
       resources:
         limits:
           cpus: "0.2"
           memory: "150MB"
+    command: ['--sql-mode=NO_AUTO_VALUE_ON_ZERO']
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "rinha", "--password=mypassword"]
       interval: 5s
-      timeout: 5s
+      timeout: 30s
       retries: 5
     network_mode: "host"
 
