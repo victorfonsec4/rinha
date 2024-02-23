@@ -23,3 +23,6 @@ $ bazel build -c opt --copt=-O2 --copt=-DNDEBUG //rinha:main && cp ../bazel-bin/
 
 $sudo docker build -t vifonsec/postgres:latest -f postgres.dockerfile .
 $sudo docker run -p 5432:5432 -v /tmp:/tmp vifonsec/postgres:latest
+
+* TODO
+** Replace all latest in dockerfiles with a fixed version

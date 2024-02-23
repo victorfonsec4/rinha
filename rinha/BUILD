@@ -9,7 +9,7 @@ cc_binary(
         ":request_handler",
         ":postgres_database",
         ":moustique",
-        ":zookeeper",
+        ":shared_lock",
     ]
 )
 
@@ -55,7 +55,7 @@ cc_library(
         "@libpqxx//:libpqxx",
         ":structs",
         ":to_json",
-        ":zookeeper",
+        ":shared_lock",
     ]
 )
 
@@ -121,25 +121,11 @@ cc_library(
 
 
 cc_library(
-    name = "zookeeper",
-    hdrs = ["zookeeper.h"],
-    srcs = ["zookeeper.cc"],
+    name = "shared_lock",
+    hdrs = ["shared_lock.h"],
+    srcs = ["shared_lock.cc"],
     deps = [
         "@abseil//:abseil",
         "@glog//:glog",
-        "@zookeeper-client-c//:zookeeper-client-c",
-        ":zoo_lock",
-    ]
-)
-
-
-cc_library(
-    name = "zoo_lock",
-    hdrs = ["zoo_lock.h"],
-    srcs = ["zoo_lock.cc"],
-    deps = [
-        "@abseil//:abseil",
-        "@glog//:glog",
-        "@zookeeper-client-c//:zookeeper-client-c",
     ]
 )

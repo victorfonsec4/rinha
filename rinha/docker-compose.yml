@@ -12,13 +12,14 @@ services:
       - /var/run/postgresql:/var/run/postgresql
     depends_on:
       - db
-      - zookeeper
     deploy:
       resources:
         limits:
           cpus: "0.5"
           memory: "200MB"
     network_mode: "host"
+    ipc: host
+    shm_size: 1M
 
   api02:
     # Essa sintaxe reusa o que foi declarado em 'api01'.
@@ -62,19 +63,6 @@ services:
       timeout: 5s
       retries: 5
     network_mode: "host"
-
-  zookeeper:
-    image: vifonsec/zookeeper:latest
-    ports:
-      - "2181:2181"
-    deploy:
-      resources:
-        limits:
-          cpus: "0.2"
-          memory: "150MB"
-    network_mode: "host"
-
-
 
 
 # O uso do modo `bridge` deve ser adequado à carga que será usada no teste.

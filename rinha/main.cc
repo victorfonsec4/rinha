@@ -18,7 +18,7 @@
 #include "rinha/moustique.h"
 #include "rinha/postgres_database.h"
 #include "rinha/request_handler.h"
-#include "rinha/zookeeper.h"
+#include "rinha/shared_lock.h"
 
 ABSL_FLAG(std::string, socket_path, "/tmp/unix_socket_example.sock",
           "path to socket file");
@@ -123,7 +123,7 @@ int main(int argc, char *argv[]) {
   absl::ParseCommandLine(argc, argv);
 
   CHECK(rinha::PostgresInitializeDb());
-  CHECK(rinha::InitializeZooKeeper());
+  CHECK(rinha::InitializeSharedLocks());
 
   int num_process_threads = absl::GetFlag(FLAGS_num_process_threads);
   LOG(INFO) << "Number of process threads: " << num_process_threads;

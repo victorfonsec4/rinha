@@ -35,22 +35,6 @@ services:
       retries: 5
     network_mode: "host"
 
-  zookeeper:
-    image: vifonsec/zookeeper:latest
-    ports:
-      - "2181:2181"
-    deploy:
-      resources:
-        limits:
-          cpus: "0.2"
-          memory: "150MB"
-    network_mode: "host"
-
-
-
-
-
-
 # O uso do modo `bridge` deve ser adequado à carga que será usada no teste.
 # A edição anterior se beneficiou do modo host pois o volume de requisições
 # era relativamente alto e a virtualização da rede se tornou um gargalo, mas

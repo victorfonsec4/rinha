@@ -10,7 +10,7 @@
 
 #include "rinha/structs.h"
 #include "rinha/to_json.h"
-#include "zookeeper.h"
+#include "rinha/shared_lock.h"
 
 namespace rinha {
 namespace {
@@ -202,8 +202,8 @@ TransactionResult PostgresDbExecuteTransaction(int id,
 
   customer_write_mutexs[id].Lock();
   absl::Cleanup mutex_unlocker = [&] { customer_write_mutexs[id].Unlock(); };
-  GetZooLock(id);
-  absl::Cleanup zoo_unlocker = [&] { ReleaseZooLock(id);};
+  GetSharedLock(id);
+  absl::Cleanup zoo_unlocker = [&] { ReleaseSharedLock(id);};
 
   if (!ReadCustomerNonTransactional(id, customer)) {
     LOG(ERROR) << "Failed to read customer" << std::endl;
