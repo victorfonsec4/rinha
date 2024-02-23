@@ -26,20 +26,4 @@ services:
           cpus: "0.2"
           memory: "150MB"
     command: ['--sql-mode=NO_AUTO_VALUE_ON_ZERO']
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "rinha", "--password=mypassword"]
-      interval: 5s
-      timeout: 30s
-      retries: 5
     network_mode: "host"
-
-# O uso do modo `bridge` deve ser adequado à carga que será usada no teste.
-# A edição anterior se beneficiou do modo host pois o volume de requisições
-# era relativamente alto e a virtualização da rede se tornou um gargalo, mas
-# este modo é mais complexo de ser configurado. Fique à vontade para usar o
-# modo que quiser desde que não conflite com portas trivialmente usadas em um
-# SO.
-# networks:
-#   default:
-#     driver: bridge
-#     name: rinha-nginx-2024q1

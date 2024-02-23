@@ -54,12 +54,7 @@ services:
         limits:
           cpus: "0.2"
           memory: "350MB"
-    command: ['--sql-mode=NO_AUTO_VALUE_ON_ZERO']
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "rinha", "--password=mypassword"]
-      interval: 5s
-      timeout: 30s
-      retries: 5
+    command: ['--sql-mode=NO_AUTO_VALUE_ON_ZERO', '--skip-log-bin', '--innodb-doublewrite=0', '--innodb-flush-log-at-trx-commit=0', '--query-cache-type=0', '--aria-pagecache-buffer-size=1M', '--performance-schema=0']
     network_mode: "host"
 
 
