@@ -27,10 +27,10 @@ services:
     hostname: api02
     command: ["--socket_path=/tmp/unix_socket_example2.sock"]
 
-  router:
-    image: vifonsec/haproxy:latest
+  nginx:
+    image: vifonsec/nginx2:latest
     volumes:
-      - ./haproxy2.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./nginx2.conf:/etc/nginx/nginx.conf:ro
       - /tmp:/tmp
     depends_on:
       - api01

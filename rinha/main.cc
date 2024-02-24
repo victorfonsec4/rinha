@@ -15,8 +15,8 @@
 #include "glog/logging.h"
 #include "simdjson.h"
 
-#include "rinha/maria_database.h"
 #include "rinha/moustique.h"
+#include "rinha/maria_database.h"
 #include "rinha/request_handler.h"
 #include "rinha/shared_lock.h"
 
@@ -41,8 +41,7 @@ constexpr char kNotFoundHeaderLength[] = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
 constexpr size_t NotFoundHeaderLength = sizeof(kNotFoundHeaderLength);
 
 constexpr int kBufferWrittableSize = 1024;
-constexpr int kBufferTotalSize =
-    kBufferWrittableSize + simdjson::SIMDJSON_PADDING;
+constexpr int kBufferTotalSize = kBufferWrittableSize + simdjson::SIMDJSON_PADDING;
 
 namespace {
 void ProcessRequest(std::vector<char> &&buffer, ssize_t num_read,
@@ -55,7 +54,8 @@ void ProcessRequest(std::vector<char> &&buffer, ssize_t num_read,
     while (num_read >= buffer.size() - 1) {
       num_read = read(buffer.data(), buffer.size());
     }
-    ssize_t result = write(kBadRequestHeader, kBadRequestHeaderLength);
+    ssize_t result =
+        write(kBadRequestHeader, kBadRequestHeaderLength);
     if (result == -1) {
       DLOG(ERROR) << "Failed to send response";
     }
@@ -158,11 +158,6 @@ int main(int argc, char *argv[]) {
   CHECK(rinha::MariaInitializeDb());
   CHECK(rinha::InitializeSharedLocks());
 
-  int num_connection_threads = absl::GetFlag(FLAGS_num_connection_threads);
-
-  LOG(INFO) << "Number of process threads: " << num_process_threads;
-  LOG(INFO) << "Number of connection threads: " << num_connection_threads;
-
   auto handle_lambda = [](int client_fd, auto read, auto write) {
     std::vector<char> buffer(kBufferTotalSize);
     ssize_t num_read = read(buffer.data(), kBufferWrittableSize - 1);
@@ -175,7 +170,14 @@ int main(int argc, char *argv[]) {
     ProcessRequest(std::move(buffer), num_read, read, write);
   };
 
-  moustique_listen_fd(server_fd, num_connection_threads, handle_lambda);
+
+  int num_connection_threads = absl::GetFlag(FLAGS_num_connection_threads);
+  moustique_listen_fd(server_fd, num_connection_threads,
+                      handle_lambda);
+
+
+  LOG(INFO) << "Number of process threads: " << num_process_threads;
+  LOG(INFO) << "Number of connection threads: " << num_connection_threads;
 
   return 0;
 }
