@@ -1,4 +1,6 @@
+/parciais
 /bazel-*
+/valgrind
 /conan/conan
 /conan/conan.lock
 /conan/conanbuildinfo.txt

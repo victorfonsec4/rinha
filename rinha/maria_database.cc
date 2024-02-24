@@ -131,6 +131,7 @@ bool LazyInitializeStatements() {
   return true;
 }
 
+// TODO: Find a way to init those at the start of the program.
 bool LazyInit() {
   if (!LazyInitializeDb()) {
     return false;

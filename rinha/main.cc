@@ -23,10 +23,10 @@
 ABSL_FLAG(std::string, socket_path, "/tmp/unix_socket_example.sock",
           "path to socket file");
 
-ABSL_FLAG(int, num_process_threads, 100,
+ABSL_FLAG(int, num_process_threads, 20,
           "Number of threads for requesting processing");
 
-ABSL_FLAG(int, num_connection_threads, 5,
+ABSL_FLAG(int, num_connection_threads, 2,
           "Number of threads for handling connections");
 
 constexpr char kOkHeader[] =
