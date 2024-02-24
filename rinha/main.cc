@@ -123,6 +123,7 @@ int main(int argc, char *argv[]) {
   DLOG(INFO) << "Size of customer: " << sizeof(rinha::Customer);
 
   int num_process_threads = absl::GetFlag(FLAGS_num_process_threads);
+  LOG(INFO) << "Number of process threads: " << num_process_threads;
   ThreadPool process_pool(num_process_threads);
 
   int server_fd;
@@ -172,12 +173,9 @@ int main(int argc, char *argv[]) {
 
 
   int num_connection_threads = absl::GetFlag(FLAGS_num_connection_threads);
+  LOG(INFO) << "Number of connection threads: " << num_connection_threads;
   moustique_listen_fd(server_fd, num_connection_threads,
                       handle_lambda);
-
-
-  LOG(INFO) << "Number of process threads: " << num_process_threads;
-  LOG(INFO) << "Number of connection threads: " << num_connection_threads;
 
   return 0;
 }
