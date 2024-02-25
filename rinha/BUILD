@@ -21,44 +21,6 @@ cc_library(
 )
 
 cc_library(
-    name = "in_memory_database",
-    hdrs = ["in_memory_database.h"],
-    srcs = ["in_memory_database.cc"],
-    deps = [
-        "@abseil//:abseil",
-        "@glog//:glog",
-        ":structs",
-    ]
-)
-
-cc_library(
-    name = "sqlite_database",
-    hdrs = ["sqlite_database.h"],
-    srcs = ["sqlite_database.cc"],
-    deps = [
-        "@abseil//:abseil",
-        "@glog//:glog",
-        "@sqlite3//:sqlite3",
-        ":structs",
-        ":to_json",
-    ]
-)
-
-cc_library(
-    name = "postgres_database",
-    hdrs = ["postgres_database.h"],
-    srcs = ["postgres_database.cc"],
-    deps = [
-        "@abseil//:abseil",
-        "@glog//:glog",
-        "@libpqxx//:libpqxx",
-        ":structs",
-        ":to_json",
-        ":shared_lock",
-    ]
-)
-
-cc_library(
     name = "to_json",
     hdrs = ["to_json.h"],
     srcs = ["to_json.cc"],

@@ -131,7 +131,6 @@ bool LazyInitializeStatements() {
   return true;
 }
 
-// TODO: Find a way to init those at the start of the program.
 bool LazyInit() {
   if (!LazyInitializeDb()) {
     return false;
@@ -290,7 +289,7 @@ bool MariaInitializeThread() {
     if (!success) {
       LOG(ERROR) << "Retrying to connect to MariaDB...";
     }
-    sleep(5);
+    sleep(1);
   }
 
   return true;
