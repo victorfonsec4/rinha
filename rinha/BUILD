@@ -82,17 +82,6 @@ cc_library(
 )
 
 cc_library(
-    name = "shared_count",
-    hdrs = ["shared_count.h"],
-    srcs = ["shared_count.cc"],
-    deps = [
-        "@abseil//:abseil",
-        "@glog//:glog",
-    ]
-)
-
-
-cc_library(
     name = "maria_database",
     hdrs = ["maria_database.h"],
     srcs = ["maria_database.cc"],
@@ -103,6 +92,5 @@ cc_library(
         ":structs",
         ":to_json",
         ":shared_lock",
-        ":shared_count",
     ]
 )
