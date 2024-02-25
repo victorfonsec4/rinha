@@ -18,6 +18,7 @@
 
 #include "rinha/maria_database.h"
 #include "rinha/request_handler.h"
+#include "rinha/shared_count.h"
 #include "rinha/shared_lock.h"
 
 ABSL_FLAG(std::string, socket_path, "/tmp/unix_socket_example.sock",
@@ -170,6 +171,7 @@ int main(int argc, char *argv[]) {
   // Initialize database and locks
   CHECK(rinha::MariaInitializeDb());
   CHECK(rinha::InitializeSharedLocks());
+  CHECK(rinha::InitializeSharedCounters());
 
   LOG(INFO) << "Initializing database threads...";
   absl::Barrier barrier(num_process_threads + 1);

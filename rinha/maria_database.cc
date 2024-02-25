@@ -6,6 +6,7 @@
 #include "glog/logging.h"
 #include "mariadb/mysql.h"
 
+#include "rinha/shared_count.h"
 #include "rinha/shared_lock.h"
 #include "rinha/structs.h"
 #include "rinha/to_json.h"
@@ -18,9 +19,10 @@ thread_local MYSQL_STMT *select_stmt;
 
 absl::Mutex customer_write_mutexs[5];
 
-constexpr char stmt_insert[] = "INSERT INTO Users (id, data) VALUES (?, ?) ON "
-                               "DUPLICATE KEY UPDATE data = VALUES(data)";
-constexpr char stmt_select[] = "SELECT data FROM Users WHERE id = ?";
+constexpr char stmt_insert[] =
+    "INSERT INTO Users (id, data, version) VALUES (?, ?, ?) ON "
+    "DUPLICATE KEY UPDATE data = VALUES(data), version = VALUES(version)";
+constexpr char stmt_select[] = "SELECT data, version FROM Users WHERE id = ?";
 
 constexpr Customer kInitialCustomers[] = {
     {.limit = 100000,
@@ -51,8 +53,8 @@ constexpr Customer kInitialCustomers[] = {
 
 };
 
-bool InsertCustomer(const Customer &customer, const int id) {
-  MYSQL_BIND bind[2];
+bool InsertCustomer(const Customer &customer, const int version, const int id) {
+  MYSQL_BIND bind[3];
   memset(bind, 0, sizeof(bind));
 
   // ID
@@ -61,6 +63,7 @@ bool InsertCustomer(const Customer &customer, const int id) {
   bind[0].is_null = 0;
   bind[0].length = 0;
 
+  // Buffer
   unsigned long size = sizeof(Customer);
   bind[1].buffer_type = MYSQL_TYPE_BLOB;
   bind[1].buffer =
@@ -68,6 +71,12 @@ bool InsertCustomer(const Customer &customer, const int id) {
   bind[1].buffer_length = size;
   bind[1].is_null = 0;
   bind[1].length = &size;
+
+  // Version
+  bind[2].buffer_type = MYSQL_TYPE_LONG;
+  bind[2].buffer = const_cast<char *>(reinterpret_cast<const char *>(&version));
+  bind[2].is_null = 0;
+  bind[2].length = 0;
 
   if (mysql_stmt_bind_param(insert_stmt, bind)) {
     LOG(ERROR) << "mysql_stmt_bind_param() failed";
@@ -143,19 +152,20 @@ bool LazyInit() {
   return true;
 }
 
-bool ReadCustomer(const int id, Customer *customer) {
+bool ReadCustomer(const int id, Customer *customer, int *version) {
   DLOG(INFO) << "Reading customer " << id;
 
-  MYSQL_BIND bind[1];
-  memset(bind, 0, sizeof(bind));
+  MYSQL_BIND param_bind[1];
+  memset(param_bind, 0, sizeof(param_bind));
 
   // ID
-  bind[0].buffer_type = MYSQL_TYPE_LONG;
-  bind[0].buffer = const_cast<char *>(reinterpret_cast<const char *>(&id));
-  bind[0].is_null = 0;
-  bind[0].length = 0;
+  param_bind[0].buffer_type = MYSQL_TYPE_LONG;
+  param_bind[0].buffer =
+      const_cast<char *>(reinterpret_cast<const char *>(&id));
+  param_bind[0].is_null = 0;
+  param_bind[0].length = 0;
 
-  if (mysql_stmt_bind_param(select_stmt, bind)) {
+  if (mysql_stmt_bind_param(select_stmt, param_bind)) {
     LOG(ERROR) << "mysql_stmt_bind_param() failed";
     LOG(ERROR) << " " << mysql_stmt_error(select_stmt);
     return false;
@@ -169,19 +179,29 @@ bool ReadCustomer(const int id, Customer *customer) {
 
   unsigned char blob_buffer[sizeof(
       Customer)]; // Adjust the buffer size according to your needs
-  my_bool is_null[1];
-  my_bool error[1];
-  unsigned long length[1];
+  my_bool is_null[2];
+  my_bool error[2];
+  unsigned long length[2];
 
-  memset(bind, 0, sizeof(bind));
-  bind[0].buffer_type = MYSQL_TYPE_BLOB;
-  bind[0].buffer = blob_buffer;
-  bind[0].buffer_length = sizeof(blob_buffer);
-  bind[0].is_null = &is_null[0];
-  bind[0].length = &length[0];
-  bind[0].error = &error[0];
+  MYSQL_BIND result_bind[2];
+  memset(result_bind, 0, sizeof(result_bind));
 
-  if (mysql_stmt_bind_result(select_stmt, bind)) {
+  // Blob
+  result_bind[0].buffer_type = MYSQL_TYPE_BLOB;
+  result_bind[0].buffer = blob_buffer;
+  result_bind[0].buffer_length = sizeof(blob_buffer);
+  result_bind[0].is_null = &is_null[0];
+  result_bind[0].length = &length[0];
+  result_bind[0].error = &error[0];
+
+  // Version
+  result_bind[1].buffer_type = MYSQL_TYPE_LONG;
+  result_bind[1].buffer = reinterpret_cast<char *>(version);
+  result_bind[1].is_null = &is_null[1];
+  result_bind[1].length = &length[1];
+  result_bind[1].error = &error[1];
+
+  if (mysql_stmt_bind_result(select_stmt, result_bind)) {
     LOG(ERROR) << "mysql_stmt_execute(), 1 failed";
     LOG(ERROR) << " " << mysql_stmt_error(select_stmt);
     return false;
@@ -219,7 +239,7 @@ bool MariaInitializeDb() {
   LOG(INFO) << "Connected to MariaDB";
 
   for (int i = 0; i < 5; i++) {
-    if (!InsertCustomer(kInitialCustomers[i], i)) {
+    if (!InsertCustomer(kInitialCustomers[i], 0, i)) {
       LOG(ERROR) << "Failed to insert initial customers";
       return false;
     }
@@ -236,7 +256,8 @@ bool MariaDbGetCustomer(int id, Customer *customer) {
   }
   id--;
 
-  if (!ReadCustomer(id, customer)) {
+  int version;
+  if (!ReadCustomer(id, customer, &version)) {
     LOG(ERROR) << "Failed to read customer";
     return false;
   }
@@ -251,32 +272,53 @@ TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
   }
   id--;
 
-  customer_write_mutexs[id].Lock();
-  absl::Cleanup mutex_unlocker = [&] { customer_write_mutexs[id].Unlock(); };
-  GetSharedLock(id);
-  absl::Cleanup zoo_unlocker = [&] { ReleaseSharedLock(id); };
+  bool success = false;
 
-  if (!ReadCustomer(id, customer)) {
-    LOG(ERROR) << "Failed to read customer";
-    return TransactionResult::NOT_FOUND;
-  }
+  while (!success) {
+    int version;
+    if (!ReadCustomer(id, customer, &version)) {
+      LOG(ERROR) << "Failed to read customer";
+      return TransactionResult::NOT_FOUND;
+    }
 
-  if (customer->balance + transaction.value < -customer->limit) {
-    return TransactionResult::LIMIT_EXCEEDED;
-  }
+    DLOG(INFO) << "Read customer at version " << version;
 
-  customer->balance += transaction.value;
-  customer->transactions[customer->next_transaction_index] =
-      std::move(transaction);
-  customer->next_transaction_index =
-      (customer->next_transaction_index + 1) % 10;
-  if (customer->transaction_count <= 10) {
-    customer->transaction_count++;
-  }
+    if (customer->balance + transaction.value < -customer->limit) {
+      if (version == GetSharedCount(id)) {
+        return TransactionResult::LIMIT_EXCEEDED;
+      }
+      LOG(ERROR) << "Update conflict, retrying...";
+      continue;
+    }
 
-  if (!InsertCustomer(*customer, id)) {
-    LOG(ERROR) << "Failed to insert customer" << std::endl;
-    return TransactionResult::NOT_FOUND;
+    customer->balance += transaction.value;
+    customer->transactions[customer->next_transaction_index] =
+        std::move(transaction);
+    customer->next_transaction_index =
+        (customer->next_transaction_index + 1) % 10;
+    if (customer->transaction_count <= 10) {
+      customer->transaction_count++;
+    }
+
+    customer_write_mutexs[id].Lock();
+    absl::Cleanup mutex_unlocker = [&] { customer_write_mutexs[id].Unlock(); };
+    GetSharedLock(id);
+    absl::Cleanup shared_unlocker = [&] { ReleaseSharedLock(id); };
+    if (version != GetSharedCount(id)) {
+      DLOG(INFO) << "Conflict!" << std::endl
+                 << "Current version: " << version
+                 << " Shared count: " << GetSharedCount(id);
+      LOG(ERROR) << "Update conflict, retrying...";
+      continue;
+    }
+
+    if (!InsertCustomer(*customer, version + 1, id)) {
+      LOG(ERROR) << "Failed to insert customer" << std::endl;
+      return TransactionResult::NOT_FOUND;
+    }
+
+    IncreaseSharedCount(id);
+    success = true;
   }
 
   return TransactionResult::SUCCESS;

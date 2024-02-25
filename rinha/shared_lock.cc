@@ -1,11 +1,11 @@
 #include "rinha/shared_lock.h"
 
+#include <fcntl.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
 #include <sys/mman.h>
-#include <pthread.h>
 #include <unistd.h>
 
 #include "glog/logging.h"
@@ -16,7 +16,6 @@ constexpr char kSharedMemoryName[][16] = {"shared_memory_1", "shared_memory_2",
                                           "shared_memory_3", "shared_memory_4",
                                           "shared_memory_5"};
 constexpr int kSharedMemorySize = sizeof(pthread_mutex_t);
-
 pthread_mutex_t *shared_locks[5];
 } // namespace
 
@@ -39,8 +38,8 @@ bool InitializeSharedLocks() {
     }
 
     // Map the shared memory in the process address space
-    shared_locks[i] = (pthread_mutex_t *)mmap(0, kSharedMemorySize, PROT_READ | PROT_WRITE,
-                                    MAP_SHARED, shm_fd, 0);
+    shared_locks[i] = (pthread_mutex_t *)mmap(
+        0, kSharedMemorySize, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     if (shared_locks[i] == MAP_FAILED) {
       perror("mmap");
       return false;
@@ -57,13 +56,8 @@ bool InitializeSharedLocks() {
   return true;
 }
 
-void GetSharedLock(int i) {
-  pthread_mutex_lock(shared_locks[i]);
-}
+void GetSharedLock(int i) { pthread_mutex_lock(shared_locks[i]); }
 
-void ReleaseSharedLock(int i) {
-  pthread_mutex_unlock(shared_locks[i]);
-}
-
+void ReleaseSharedLock(int i) { pthread_mutex_unlock(shared_locks[i]); }
 
 } // namespace rinha
