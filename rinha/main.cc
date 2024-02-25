@@ -52,6 +52,7 @@ void ProcessRequest(std::vector<char> &&buffer, ssize_t num_read,
   DLOG(INFO) << "Received " << num_read << " bytes";
   DLOG(INFO) << "Received request: " << std::endl << buffer.data();
 
+  // TODO: can we use the same buffer for the response?
   std::string response_body;
   rinha::Result result = rinha::HandleRequest(buffer, &response_body);
 
@@ -120,6 +121,7 @@ int main(int argc, char *argv[]) {
   int server_fd;
   struct sockaddr_un server_addr;
   int epoll_fd = epoll_create1(0);
+  std::string socket_path = absl::GetFlag(FLAGS_socket_path);
   // Create socket and bind server socket
   {
     server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -129,9 +131,6 @@ int main(int argc, char *argv[]) {
     }
 
     SetNonBlocking(server_fd);
-
-    std::string socket_path = absl::GetFlag(FLAGS_socket_path);
-    LOG(INFO) << "Socket path: " << socket_path;
 
     // Bind socket to socket path
     server_addr.sun_family = AF_UNIX;
@@ -183,6 +182,7 @@ int main(int argc, char *argv[]) {
   barrier.Block();
   LOG(INFO) << "Database threads initialized.";
 
+  LOG(INFO) << "Socket path: " << socket_path;
   LOG(INFO) << "Number of process threads: " << num_process_threads;
   LOG(INFO) << "Number of connection threads: " << num_connection_threads;
 

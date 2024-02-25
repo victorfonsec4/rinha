@@ -2,6 +2,8 @@
 
 #include <optional>
 
+#include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "glog/logging.h"
 #include "simdjson.h"
@@ -11,10 +13,7 @@
 namespace rinha {
 namespace {
 constexpr char kGetVerb[] = "GET";
-constexpr char kGetPathBegin[] = " /clientes/";
-constexpr char kGetPathEnd[] = "/extrato ";
 
-constexpr char kPostVerb[] = "POST";
 constexpr char kPostPathBegin[] = " /clientes/";
 constexpr char kPostPathEnd[] = "/transacoes ";
 constexpr char kPostBeginBody[] = "\r\n\r\n";
@@ -25,8 +24,9 @@ bool ParseJsonBody(absl::string_view body, Transaction *transaction) {
   simdjson::ondemand::document doc;
 
   // TODO: we probably don' need to call strlen here, pass in the size.
-  auto error = parser.iterate(
-      body.data(), strlen(body.data()), sizeof(body.data())).get(doc);
+  auto error =
+      parser.iterate(body.data(), strlen(body.data()), sizeof(body.data()))
+          .get(doc);
   if (error) {
     DLOG(ERROR) << "Error parsing json: " << error << std::endl;
     return false;
@@ -122,66 +122,23 @@ bool ParseJsonBody(absl::string_view body, Transaction *transaction) {
 } // namespace
 
 bool FromHttp(absl::string_view http, Request *request) {
-  // TODO: We might be able to optimize this by going straight to the
-  // characters.
-  size_t first_end_line = http.find("\r\n");
-  if (first_end_line == std::string::npos) {
-    DLOG(ERROR) << "No end of line found" << std::endl;
-    return false;
-  }
-
-  size_t get_verb_idx = http.find(kGetVerb);
-  if (get_verb_idx != std::string::npos && get_verb_idx < first_end_line) {
+  if (absl::StartsWith(http, kGetVerb)) {
     DLOG(INFO) << "GET request" << std::endl;
-    size_t get_path_idx = http.find(kGetPathBegin);
-    if (get_path_idx == std::string::npos) {
-      DLOG(ERROR) << "No get path begin found" << std::endl;
+    bool success =
+        absl::SimpleAtoi(absl::string_view(http.data() + 14, 1), &request->id);
+    if (!success) {
+      DLOG(ERROR) << "Failed to parse id" << std::endl;
       return false;
     }
-
-    size_t id_idx = get_path_idx + sizeof(kGetPathBegin) - 1;
-    size_t id_end_idx = http.find("/", id_idx);
-    if (id_end_idx == std::string::npos) {
-      DLOG(ERROR) << "No id end found" << std::endl;
-      return false;
-    }
-
-    size_t extrato_idx = http.find(kGetPathEnd);
-    if (extrato_idx == std::string::npos) {
-      DLOG(ERROR) << "No extrato path end found" << std::endl;
-      return false;
-    }
-
-    // TODO: Can we avoid this copy?
-    request->id =
-        std::stoi(std::string(http.substr(id_idx, id_end_idx - id_idx)));
     request->type = RequestType::BALANCE;
 
     return true;
   }
 
-  size_t post_verb_idx = http.find(kPostVerb);
-  if (post_verb_idx == std::string::npos || post_verb_idx >= first_end_line) {
-    DLOG(ERROR) << "No POST verb found" << std::endl;
-    return false;
-  }
-
-  size_t post_path_idx = http.find(kPostPathBegin);
-  if (post_path_idx == std::string::npos) {
-    DLOG(ERROR) << "No post path begin found" << std::endl;
-    return false;
-  }
-
-  size_t id_idx = post_path_idx + sizeof(kPostPathBegin) - 1;
-  size_t id_end_idx = http.find("/", id_idx);
-  if (id_end_idx == std::string::npos) {
-    DLOG(ERROR) << "No id end found" << std::endl;
-    return false;
-  }
-
-  size_t transacoes_idx = http.find(kPostPathEnd);
-  if (transacoes_idx == std::string::npos) {
-    DLOG(ERROR) << "No transacoes path end found" << std::endl;
+  bool success =
+      absl::SimpleAtoi(absl::string_view(http.data() + 15, 1), &request->id);
+  if (!success) {
+    DLOG(ERROR) << "Failed to parse id" << std::endl;
     return false;
   }
 
@@ -200,8 +157,6 @@ bool FromHttp(absl::string_view http, Request *request) {
     return false;
   }
 
-  request->id =
-      std::stoi(std::string(http.substr(id_idx, id_end_idx - id_idx)));
   request->type = RequestType::TRANSACTION;
   return true;
 }
