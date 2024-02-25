@@ -112,7 +112,10 @@ int main(int argc, char *argv[]) {
   DLOG(INFO) << "Size of customer: " << sizeof(rinha::Customer);
 
   int num_process_threads = absl::GetFlag(FLAGS_num_process_threads);
+  int num_connection_threads = absl::GetFlag(FLAGS_num_connection_threads);
+
   ThreadPool process_pool(num_process_threads);
+  ThreadPool connection_pool(num_connection_threads);
 
   int server_fd;
   struct sockaddr_un server_addr;
@@ -180,58 +183,60 @@ int main(int argc, char *argv[]) {
   barrier.Block();
   LOG(INFO) << "Database threads initialized.";
 
-  int num_connection_threads = absl::GetFlag(FLAGS_num_connection_threads);
   LOG(INFO) << "Number of process threads: " << num_process_threads;
   LOG(INFO) << "Number of connection threads: " << num_connection_threads;
 
-  std::vector<epoll_event> events(kMaxEvents);
-  while (true) {
-    int num_events = epoll_wait(epoll_fd, events.data(), kMaxEvents, -1);
-    for (int i = 0; i < num_events; i++) {
-      // Look for new connections
-      if (events[i].data.fd == server_fd) {
-        int client_fd = accept(server_fd, NULL, NULL);
-        if (client_fd == -1) {
-          LOG(ERROR) << "Failed to accept new connection: " << strerror(errno);
-          continue;
+  connection_pool.enqueue([epoll_fd, server_fd, &process_pool]() {
+    std::vector<epoll_event> events(kMaxEvents);
+    while (true) {
+      int num_events = epoll_wait(epoll_fd, events.data(), kMaxEvents, -1);
+      for (int i = 0; i < num_events; i++) {
+        // Look for new connections
+        if (events[i].data.fd == server_fd) {
+          int client_fd = accept(server_fd, NULL, NULL);
+          if (client_fd == -1) {
+            LOG(ERROR) << "Failed to accept new connection: "
+                       << strerror(errno);
+            continue;
+          }
+
+          epoll_event client_event;
+          client_event.events = EPOLLIN | EPOLLET;
+          client_event.data.fd = client_fd;
+
+          SetNonBlocking(events[i].data.fd);
+
+          if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &client_event) ==
+              -1) {
+            LOG(ERROR) << "Failed to add client socket to epoll: "
+                       << strerror(errno);
+            close(client_fd);
+            continue;
+          }
+          // Handle connection data
+        } else {
+          std::vector<char> buffer(kBufferTotalSize);
+          // Save a spot for the null terminator
+          ssize_t count =
+              read(events[i].data.fd, buffer.data(), kBufferWrittableSize - 1);
+          if (count == -1) {
+            LOG(ERROR) << "Failed to read from socket: " << strerror(errno);
+            close(events[i].data.fd);
+            continue;
+          } else if (count == 0) {
+            // Client disconnected
+            close(events[i].data.fd);
+            continue;
+          }
+
+          process_pool.enqueue([b = std::move(buffer), count,
+                                client_fd = events[i].data.fd]() mutable {
+            ProcessRequest(std::move(b), count, client_fd);
+          });
         }
-
-        epoll_event client_event;
-        client_event.events = EPOLLIN | EPOLLET;
-        client_event.data.fd = client_fd;
-
-        SetNonBlocking(events[i].data.fd);
-
-        if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &client_event) ==
-            -1) {
-          LOG(ERROR) << "Failed to add client socket to epoll: "
-                     << strerror(errno);
-          close(client_fd);
-          continue;
-        }
-        // Handle connection data
-      } else {
-        std::vector<char> buffer(kBufferTotalSize);
-        // Save a spot for the null terminator
-        ssize_t count =
-            read(events[i].data.fd, buffer.data(), kBufferWrittableSize - 1);
-        if (count == -1) {
-          LOG(ERROR) << "Failed to read from socket: " << strerror(errno);
-          close(events[i].data.fd);
-          continue;
-        } else if (count == 0) {
-          // Client disconnected
-          close(events[i].data.fd);
-          continue;
-        }
-
-        process_pool.enqueue([b = std::move(buffer), count,
-                              client_fd = events[i].data.fd]() mutable {
-          ProcessRequest(std::move(b), count, client_fd);
-        });
       }
     }
-  }
+  });
 
   return 0;
 }
