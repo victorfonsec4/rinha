@@ -4,11 +4,11 @@
 #include "rinha/structs.h"
 
 namespace rinha {
+bool MariaInitializeThread();
 bool MariaInitializeDb();
 bool MariaDbGetCustomer(int id, Customer *customer);
 TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
                                             Customer *customer);
-
-} //namespace rinha
+} // namespace rinha
 
 #endif

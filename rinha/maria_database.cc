@@ -12,14 +12,14 @@
 
 namespace rinha {
 namespace {
-thread_local bool initialized = false;
 thread_local MYSQL *conn;
 thread_local MYSQL_STMT *insert_stmt;
 thread_local MYSQL_STMT *select_stmt;
 
 absl::Mutex customer_write_mutexs[5];
 
-constexpr char stmt_insert[] = "INSERT INTO Users (id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = VALUES(data)";
+constexpr char stmt_insert[] = "INSERT INTO Users (id, data) VALUES (?, ?) ON "
+                               "DUPLICATE KEY UPDATE data = VALUES(data)";
 constexpr char stmt_select[] = "SELECT data FROM Users WHERE id = ?";
 
 constexpr Customer kInitialCustomers[] = {
@@ -51,7 +51,7 @@ constexpr Customer kInitialCustomers[] = {
 
 };
 
-bool InsertCustomer(const Customer& customer, const int id) {
+bool InsertCustomer(const Customer &customer, const int id) {
   MYSQL_BIND bind[2];
   memset(bind, 0, sizeof(bind));
 
@@ -63,7 +63,8 @@ bool InsertCustomer(const Customer& customer, const int id) {
 
   unsigned long size = sizeof(Customer);
   bind[1].buffer_type = MYSQL_TYPE_BLOB;
-  bind[1].buffer = const_cast<char *>(reinterpret_cast<const char *>(&customer));
+  bind[1].buffer =
+      const_cast<char *>(reinterpret_cast<const char *>(&customer));
   bind[1].buffer_length = size;
   bind[1].is_null = 0;
   bind[1].length = &size;
@@ -109,7 +110,6 @@ bool LazyInitializeStatements() {
     return false;
   }
 
-
   if (mysql_stmt_prepare(insert_stmt, stmt_insert, strlen(stmt_insert))) {
     LOG(ERROR) << "mysql_stmt_prepare(), INSERT failed";
     LOG(ERROR) << " " << mysql_stmt_error(insert_stmt);
@@ -141,20 +141,11 @@ bool LazyInit() {
     return false;
   }
 
-  initialized = true;
-
   return true;
 }
 
 bool ReadCustomer(const int id, Customer *customer) {
   DLOG(INFO) << "Reading customer " << id;
-  if (!initialized) {
-    bool success = LazyInit();
-    if (!success) {
-      LOG(ERROR) << "Failed to init db or statements" << std::endl;
-      return false;
-    }
-  }
 
   MYSQL_BIND bind[1];
   memset(bind, 0, sizeof(bind));
@@ -177,7 +168,8 @@ bool ReadCustomer(const int id, Customer *customer) {
     return false;
   }
 
-  unsigned char blob_buffer[sizeof(Customer)]; // Adjust the buffer size according to your needs
+  unsigned char blob_buffer[sizeof(
+      Customer)]; // Adjust the buffer size according to your needs
   my_bool is_null[1];
   my_bool error[1];
   unsigned long length[1];
@@ -211,7 +203,7 @@ bool ReadCustomer(const int id, Customer *customer) {
   return true;
 }
 
-}// namespace
+} // namespace
 
 bool MariaInitializeDb() {
   LOG(INFO) << "Initializing MariaDB";
@@ -227,8 +219,7 @@ bool MariaInitializeDb() {
 
   LOG(INFO) << "Connected to MariaDB";
 
-
-  for (int i = 0; i < 5; i++){
+  for (int i = 0; i < 5; i++) {
     if (!InsertCustomer(kInitialCustomers[i], i)) {
       LOG(ERROR) << "Failed to insert initial customers";
       return false;
@@ -254,26 +245,17 @@ bool MariaDbGetCustomer(int id, Customer *customer) {
   return true;
 }
 
-TransactionResult MariaDbExecuteTransaction(int id,
-                                               Transaction &&transaction,
-                                               Customer *customer) {
+TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
+                                            Customer *customer) {
   if (id > 5 || id < 1) {
     return TransactionResult::NOT_FOUND;
   }
   id--;
 
-  if (!initialized) {
-    bool success = LazyInit();
-    if (!success) {
-      LOG(ERROR) << "Failed to init db or statements" << std::endl;
-      return TransactionResult::NOT_FOUND;
-    }
-  }
-
   customer_write_mutexs[id].Lock();
   absl::Cleanup mutex_unlocker = [&] { customer_write_mutexs[id].Unlock(); };
   GetSharedLock(id);
-  absl::Cleanup zoo_unlocker = [&] { ReleaseSharedLock(id);};
+  absl::Cleanup zoo_unlocker = [&] { ReleaseSharedLock(id); };
 
   if (!ReadCustomer(id, customer)) {
     LOG(ERROR) << "Failed to read customer";
@@ -299,6 +281,19 @@ TransactionResult MariaDbExecuteTransaction(int id,
   }
 
   return TransactionResult::SUCCESS;
+}
+
+bool MariaInitializeThread() {
+  bool success = false;
+  while (!success) {
+    success = LazyInit();
+    if (!success) {
+      LOG(ERROR) << "Retrying to connect to MariaDB...";
+    }
+    sleep(5);
+  }
+
+  return true;
 }
 
 } // namespace rinha

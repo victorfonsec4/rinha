@@ -8,7 +8,6 @@ cc_binary(
         "@simdjson//:simdjson",
         ":request_handler",
         ":maria_database",
-        ":moustique",
         ":shared_lock",
     ]
 )
@@ -98,16 +97,6 @@ cc_library(
     ]
 )
 
-
-cc_library(
-    name = "moustique",
-    srcs = ["moustique.h"],
-    deps = [
-        "@abseil//:abseil",
-        "@glog//:glog",
-        "@boost//:boost",
-    ]
-)
 
 cc_library(
     name = "time",

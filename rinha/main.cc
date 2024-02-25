@@ -10,12 +10,12 @@
 #include "absl/flags/parse.h"
 #include "absl/flags/usage.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/barrier.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "glog/logging.h"
 #include "simdjson.h"
 
-#include "rinha/moustique.h"
 #include "rinha/maria_database.h"
 #include "rinha/request_handler.h"
 #include "rinha/shared_lock.h"
@@ -41,27 +41,13 @@ constexpr char kNotFoundHeaderLength[] = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
 constexpr size_t NotFoundHeaderLength = sizeof(kNotFoundHeaderLength);
 
 constexpr int kBufferWrittableSize = 1024;
-constexpr int kBufferTotalSize = kBufferWrittableSize + simdjson::SIMDJSON_PADDING;
+constexpr int kBufferTotalSize =
+    kBufferWrittableSize + simdjson::SIMDJSON_PADDING;
+constexpr int kMaxEvents = 256;
 
 namespace {
 void ProcessRequest(std::vector<char> &&buffer, ssize_t num_read,
-                    std::function<ssize_t(char *, int)> read,
-                    std::function<ssize_t(const char *, int)> write) {
-  // TODO: We might be able to skip this.
-  if (num_read >= kBufferWrittableSize - 1) {
-    LOG(WARNING) << "Message too big";
-    // discard the rest of the message in the socket
-    while (num_read >= buffer.size() - 1) {
-      num_read = read(buffer.data(), buffer.size());
-    }
-    ssize_t result =
-        write(kBadRequestHeader, kBadRequestHeaderLength);
-    if (result == -1) {
-      DLOG(ERROR) << "Failed to send response";
-    }
-    return;
-  }
-
+                    int client_fd) {
   buffer[num_read] = '\0';
   DLOG(INFO) << "Received " << num_read << " bytes";
   DLOG(INFO) << "Received request: " << std::endl << buffer.data();
@@ -97,10 +83,13 @@ void ProcessRequest(std::vector<char> &&buffer, ssize_t num_read,
 
   // Send response
   DLOG(INFO) << "Sending response: " << std::endl << http_response;
-  ssize_t r = write(http_response, http_response_length);
+  ssize_t r = write(client_fd, http_response, http_response_length);
   if (r == -1) {
-    DLOG(ERROR) << "Failed to send response";
+    LOG(ERROR) << "Failed to send response: " << strerror(errno);
   }
+
+  // TODO: Is there some kinda of keep alive that can be implemented here?
+  close(client_fd);
 }
 
 void SetNonBlocking(int socket_fd) {
@@ -123,11 +112,11 @@ int main(int argc, char *argv[]) {
   DLOG(INFO) << "Size of customer: " << sizeof(rinha::Customer);
 
   int num_process_threads = absl::GetFlag(FLAGS_num_process_threads);
-  LOG(INFO) << "Number of process threads: " << num_process_threads;
   ThreadPool process_pool(num_process_threads);
 
   int server_fd;
   struct sockaddr_un server_addr;
+  int epoll_fd = epoll_create1(0);
   // Create socket and bind server socket
   {
     server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -153,29 +142,96 @@ int main(int argc, char *argv[]) {
       close(server_fd);
       return -1;
     }
+
+    if (listen(server_fd, 5) == -1) {
+      LOG(ERROR) << "Failled to listen on the socket: " << strerror(errno);
+      close(server_fd);
+      return 1;
+    }
+
+    epoll_event accept_event;
+    accept_event.events = EPOLLIN;
+    accept_event.data.fd = server_fd;
+
+    if (epoll_fd == -1) {
+      LOG(ERROR) << "Failed to create epoll fd: " << strerror(errno);
+      return 1;
+    }
+
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd, &accept_event) == -1) {
+      LOG(ERROR) << "Failed to add server socket to epoll" << strerror(errno);
+      close(server_fd);
+      return 1;
+    }
   }
 
   // Initialize database and locks
   CHECK(rinha::MariaInitializeDb());
   CHECK(rinha::InitializeSharedLocks());
 
-  auto handle_lambda = [](int client_fd, auto read, auto write) {
-    std::vector<char> buffer(kBufferTotalSize);
-    ssize_t num_read = read(buffer.data(), kBufferWrittableSize - 1);
-    if (num_read == -1) {
-      DLOG(ERROR) << "Failed to read from socket";
-      close(client_fd);
-      return;
-    }
-
-    ProcessRequest(std::move(buffer), num_read, read, write);
-  };
-
+  LOG(INFO) << "Initializing database threads...";
+  absl::Barrier barrier(num_process_threads + 1);
+  for (int i = 0; i < num_process_threads; i++) {
+    process_pool.enqueue([&barrier]() {
+      CHECK(rinha::MariaInitializeThread());
+      barrier.Block();
+    });
+  }
+  barrier.Block();
+  LOG(INFO) << "Database threads initialized.";
 
   int num_connection_threads = absl::GetFlag(FLAGS_num_connection_threads);
+  LOG(INFO) << "Number of process threads: " << num_process_threads;
   LOG(INFO) << "Number of connection threads: " << num_connection_threads;
-  moustique_listen_fd(server_fd, num_connection_threads,
-                      handle_lambda);
+
+  std::vector<epoll_event> events(kMaxEvents);
+  while (true) {
+    int num_events = epoll_wait(epoll_fd, events.data(), kMaxEvents, -1);
+    for (int i = 0; i < num_events; i++) {
+      // Look for new connections
+      if (events[i].data.fd == server_fd) {
+        int client_fd = accept(server_fd, NULL, NULL);
+        if (client_fd == -1) {
+          LOG(ERROR) << "Failed to accept new connection: " << strerror(errno);
+          continue;
+        }
+
+        epoll_event client_event;
+        client_event.events = EPOLLIN | EPOLLET;
+        client_event.data.fd = client_fd;
+
+        SetNonBlocking(events[i].data.fd);
+
+        if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &client_event) ==
+            -1) {
+          LOG(ERROR) << "Failed to add client socket to epoll: "
+                     << strerror(errno);
+          close(client_fd);
+          continue;
+        }
+        // Handle connection data
+      } else {
+        std::vector<char> buffer(kBufferTotalSize);
+        // Save a spot for the null terminator
+        ssize_t count =
+            read(events[i].data.fd, buffer.data(), kBufferWrittableSize - 1);
+        if (count == -1) {
+          LOG(ERROR) << "Failed to read from socket: " << strerror(errno);
+          close(events[i].data.fd);
+          continue;
+        } else if (count == 0) {
+          // Client disconnected
+          close(events[i].data.fd);
+          continue;
+        }
+
+        process_pool.enqueue([b = std::move(buffer), count,
+                              client_fd = events[i].data.fd]() mutable {
+          ProcessRequest(std::move(b), count, client_fd);
+        });
+      }
+    }
+  }
 
   return 0;
 }
