@@ -4,9 +4,7 @@
 #include <string>
 
 namespace rinha {
-int64_t GetTime();
-std::string FormatTime(int64_t timestamp);
-std::string GetCurrentTimeString();
-} // namespace rinha
+std::string GetTime();
+} //namespace rinha
 
 #endif

@@ -21,7 +21,7 @@ Result HandleRequest(const std::vector<char> buffer,
     return Result::INVALID_REQUEST;
   }
 
-  std::string current_time = GetCurrentTimeString();
+  std::string current_time = GetTime();
 
   if (request.type == RequestType::BALANCE) {
     Customer customer;
@@ -35,7 +35,10 @@ Result HandleRequest(const std::vector<char> buffer,
     return Result::SUCCESS;
   }
 
-  request.transaction.timestamp = GetTime();
+  std::strncpy(request.transaction.timestamp, current_time.data(),
+               sizeof(request.transaction.timestamp) - 1);
+  request.transaction.timestamp[sizeof(request.transaction.timestamp) - 1] =
+      '\0';
 
   Customer customer;
   TransactionResult result = MariaDbExecuteTransaction(

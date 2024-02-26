@@ -25,7 +25,6 @@ cc_library(
         "@abseil//:abseil",
         "@glog//:glog",
         ":structs",
-        ":time",
     ]
 )
 

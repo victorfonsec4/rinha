@@ -11,19 +11,16 @@ thread_local std::string time_str =
     absl::FormatTime("%Y-%m-%d %H:%M", absl::Now(), absl::LocalTimeZone());
 thread_local absl::Time last_update = absl::Now();
 constexpr absl::Duration kCalculateInterval = absl::Seconds(30);
-} // namespace
+} //namespace
 
-std::string GetCurrentTimeString() {
+
+std::string GetTime() {
   if (absl::Now() - last_update > kCalculateInterval) {
-    time_str =
-        absl::FormatTime("%Y-%m-%d %H:%M", absl::Now(), absl::LocalTimeZone());
     last_update = absl::Now();
+    time_str = absl::FormatTime("%Y-%m-%d %H:%M", last_update, absl::LocalTimeZone());
   }
   return time_str;
 }
-int64_t GetTime() { return absl::ToUnixSeconds(absl::Now()); }
-std::string FormatTime(int64_t timestamp) {
-  return absl::FormatTime("%Y-%m-%d %H:%M", absl::FromUnixSeconds(timestamp),
-                          absl::LocalTimeZone());
 }
-} // namespace rinha
+
+
