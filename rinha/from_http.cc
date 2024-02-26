@@ -14,8 +14,6 @@ namespace rinha {
 namespace {
 constexpr char kGetVerb[] = "GET";
 
-constexpr char kPostPathBegin[] = " /clientes/";
-constexpr char kPostPathEnd[] = "/transacoes ";
 constexpr char kPostBeginBody[] = "\r\n\r\n";
 
 thread_local simdjson::ondemand::parser parser;

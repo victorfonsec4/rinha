@@ -9,11 +9,17 @@ $ sudo docker run -p 9999:9999 -v /tmp:/tmp vifonsec/nginx:latest
 
 * Profiling
 
+** with gpro
+
 $bazel build  --copt=-pg --linkopt=-pg //rinha:main
 $./bazel-bin/rinha/main
 $ gdb -p <PID>
     call exit(0)
 $gprof bazel-bin/rinha/main gmon.out > analysis.txt
+
+** with hotspot/perf
+$ /home/victor/repos/WSL2-Linux-Kernel/tools/perf/perf record --call-graph dwarf /home/victor/repos/rinha/bazel-bin/rinha/main
+$ hotspot
 
 * building docker image
 

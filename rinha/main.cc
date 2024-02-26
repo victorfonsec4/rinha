@@ -1,5 +1,6 @@
 #include <fcntl.h>
 #include <iostream>
+#include <signal.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -37,8 +38,8 @@ constexpr char kBadRequestHeader[] =
     "HTTP/1.1 422 Unprocessable Entity\r\n\r\n";
 constexpr size_t kBadRequestHeaderLength = sizeof(kBadRequestHeader);
 
-constexpr char kNotFoundHeaderLength[] = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
-constexpr size_t NotFoundHeaderLength = sizeof(kNotFoundHeaderLength);
+constexpr char kNotFoundHeader[] = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
+constexpr size_t kNotFoundHeaderLength = sizeof(kNotFoundHeader);
 
 constexpr int kBufferWrittableSize = 1024;
 constexpr int kBufferTotalSize =
@@ -53,7 +54,7 @@ void ProcessRequest(std::vector<char> &&buffer, ssize_t num_read,
   DLOG(INFO) << "Received request: " << std::endl << buffer.data();
 
   // TODO: can we use the same buffer for the response?
-  std::string response_body;
+  std::string response_body(kOkHeaderLength + 1024, '\0');
   rinha::Result result = rinha::HandleRequest(buffer, &response_body);
 
   const char *http_response = kOkHeader;
@@ -74,8 +75,8 @@ void ProcessRequest(std::vector<char> &&buffer, ssize_t num_read,
     http_response_length = kBadRequestHeaderLength;
     break;
   case rinha::Result::NOT_FOUND:
-    http_response = kNotFoundHeaderLength;
-    http_response_length = NotFoundHeaderLength;
+    http_response = kNotFoundHeader;
+    http_response_length = kNotFoundHeaderLength;
     break;
   default:
     DCHECK(false);
@@ -104,10 +105,14 @@ void SetNonBlocking(int socket_fd) {
     exit(EXIT_FAILURE);
   }
 }
+
+void signalHandler(int signum) { exit(signum); }
 } // namespace
 
 int main(int argc, char *argv[]) {
   absl::ParseCommandLine(argc, argv);
+
+  signal(SIGINT, signalHandler);
 
   LOG(INFO) << "Starting server";
   DLOG(INFO) << "Size of customer: " << sizeof(rinha::Customer);
