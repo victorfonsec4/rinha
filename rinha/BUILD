@@ -8,10 +8,8 @@ cc_binary(
         "@simdjson//:simdjson",
         ":request_handler",
         ":maria_database",
-        ":shared_lock",
     ]
 )
-
 
 cc_library(
     name = "structs",
@@ -70,17 +68,6 @@ cc_library(
     ]
 )
 
-
-cc_library(
-    name = "shared_lock",
-    hdrs = ["shared_lock.h"],
-    srcs = ["shared_lock.cc"],
-    deps = [
-        "@abseil//:abseil",
-        "@glog//:glog",
-    ]
-)
-
 cc_library(
     name = "maria_database",
     hdrs = ["maria_database.h"],
@@ -91,6 +78,5 @@ cc_library(
         "@mariadb-connector-c//:mariadb-connector-c",
         ":structs",
         ":to_json",
-        ":shared_lock",
     ]
 )

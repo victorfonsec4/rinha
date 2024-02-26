@@ -6,7 +6,6 @@
 #include "glog/logging.h"
 #include "mariadb/mysql.h"
 
-#include "rinha/shared_lock.h"
 #include "rinha/structs.h"
 #include "rinha/to_json.h"
 
@@ -15,12 +14,15 @@ namespace {
 thread_local MYSQL *conn;
 thread_local MYSQL_STMT *insert_stmt;
 thread_local MYSQL_STMT *select_stmt;
+thread_local MYSQL_STMT *select_for_update_stmt;
 
 absl::Mutex customer_write_mutexs[5];
 
 constexpr char stmt_insert[] = "INSERT INTO Users (id, data) VALUES (?, ?) ON "
                                "DUPLICATE KEY UPDATE data = VALUES(data)";
 constexpr char stmt_select[] = "SELECT data FROM Users WHERE id = ?";
+constexpr char stmt_select_for_update[] =
+    "SELECT data FROM Users WHERE id = ? FOR UPDATE";
 
 constexpr Customer kInitialCustomers[] = {
     {.limit = 100000,
@@ -113,7 +115,7 @@ bool LazyInitializeStatements() {
   if (mysql_stmt_prepare(insert_stmt, stmt_insert, strlen(stmt_insert))) {
     LOG(ERROR) << "mysql_stmt_prepare(), INSERT failed";
     LOG(ERROR) << " " << mysql_stmt_error(insert_stmt);
-    return 1;
+    return false;
   }
 
   select_stmt = mysql_stmt_init(conn);
@@ -125,7 +127,20 @@ bool LazyInitializeStatements() {
   if (mysql_stmt_prepare(select_stmt, stmt_select, strlen(stmt_select))) {
     LOG(ERROR) << "mysql_stmt_prepare(), SELECT failed";
     LOG(ERROR) << " " << mysql_stmt_error(select_stmt);
-    return 1;
+    return false;
+  }
+
+  select_for_update_stmt = mysql_stmt_init(conn);
+  if (!select_for_update_stmt) {
+    LOG(ERROR) << "mysql_stmt_init(), out of memory";
+    return false;
+  }
+
+  if (mysql_stmt_prepare(select_for_update_stmt, stmt_select_for_update,
+                         strlen(stmt_select_for_update))) {
+    LOG(ERROR) << "mysql_stmt_prepare(), SELECT FOR UPDATE failed";
+    LOG(ERROR) << " " << mysql_stmt_error(select_for_update_stmt);
+    return false;
   }
 
   return true;
@@ -202,6 +217,65 @@ bool ReadCustomer(const int id, Customer *customer) {
   return true;
 }
 
+bool ReadCustomerForUpdate(const int id, Customer *customer) {
+  DLOG(INFO) << "Reading customer " << id;
+
+  MYSQL_BIND bind[1];
+  memset(bind, 0, sizeof(bind));
+
+  // ID
+  bind[0].buffer_type = MYSQL_TYPE_LONG;
+  bind[0].buffer = const_cast<char *>(reinterpret_cast<const char *>(&id));
+  bind[0].is_null = 0;
+  bind[0].length = 0;
+
+  if (mysql_stmt_bind_param(select_for_update_stmt, bind)) {
+    LOG(ERROR) << "mysql_stmt_bind_param() failed";
+    LOG(ERROR) << " " << mysql_stmt_error(select_for_update_stmt);
+    return false;
+  }
+
+  if (mysql_stmt_execute(select_for_update_stmt)) {
+    LOG(ERROR) << "mysql_stmt_execute(), 1 failed";
+    LOG(ERROR) << " " << mysql_stmt_error(select_for_update_stmt);
+    return false;
+  }
+
+  unsigned char blob_buffer[sizeof(
+      Customer)]; // Adjust the buffer size according to your needs
+  my_bool is_null[1];
+  my_bool error[1];
+  unsigned long length[1];
+
+  memset(bind, 0, sizeof(bind));
+  bind[0].buffer_type = MYSQL_TYPE_BLOB;
+  bind[0].buffer = blob_buffer;
+  bind[0].buffer_length = sizeof(blob_buffer);
+  bind[0].is_null = &is_null[0];
+  bind[0].length = &length[0];
+  bind[0].error = &error[0];
+
+  if (mysql_stmt_bind_result(select_for_update_stmt, bind)) {
+    LOG(ERROR) << "mysql_stmt_execute(), 1 failed";
+    LOG(ERROR) << " " << mysql_stmt_error(select_for_update_stmt);
+    return false;
+  }
+
+  int rc = mysql_stmt_fetch(select_for_update_stmt);
+  if (rc != 0) {
+    LOG(ERROR) << "mysql_stmt_fetch(), 1 failed: "
+               << mysql_stmt_error(select_for_update_stmt) << " "
+               << mysql_stmt_errno(select_for_update_stmt) << " " << rc;
+    return false;
+  }
+
+  *customer = std::move(*reinterpret_cast<Customer *>(blob_buffer));
+
+  mysql_stmt_reset(select_for_update_stmt);
+
+  return true;
+}
+
 } // namespace
 
 bool MariaInitializeDb() {
@@ -251,32 +325,51 @@ TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
   }
   id--;
 
+  bool success = false;
+  DLOG(INFO) << "Trying to get lock";
   customer_write_mutexs[id].Lock();
   absl::Cleanup mutex_unlocker = [&] { customer_write_mutexs[id].Unlock(); };
-  GetSharedLock(id);
-  absl::Cleanup zoo_unlocker = [&] { ReleaseSharedLock(id); };
+  while (!success) {
+    DLOG(INFO) << "Trying to execute transaction";
+    if (mysql_query(conn, "START TRANSACTION")) {
+      LOG(ERROR) << "Failed to start transaction: " << mysql_error(conn);
+      continue;
+    }
 
-  if (!ReadCustomer(id, customer)) {
-    LOG(ERROR) << "Failed to read customer";
-    return TransactionResult::NOT_FOUND;
-  }
+    absl::Cleanup row_unlocker = [&success] {
+      if (!success) {
+        mysql_rollback(conn);
+      }
+    };
 
-  if (customer->balance + transaction.value < -customer->limit) {
-    return TransactionResult::LIMIT_EXCEEDED;
-  }
+    if (!ReadCustomerForUpdate(id, customer)) {
+      LOG(ERROR) << "Failed to read customer";
+      continue;
+    }
 
-  customer->balance += transaction.value;
-  customer->transactions[customer->next_transaction_index] =
-      std::move(transaction);
-  customer->next_transaction_index =
-      (customer->next_transaction_index + 1) % 10;
-  if (customer->transaction_count <= 10) {
-    customer->transaction_count++;
-  }
+    if (customer->balance + transaction.value < -customer->limit) {
+      return TransactionResult::LIMIT_EXCEEDED;
+    }
 
-  if (!InsertCustomer(*customer, id)) {
-    LOG(ERROR) << "Failed to insert customer" << std::endl;
-    return TransactionResult::NOT_FOUND;
+    customer->balance += transaction.value;
+    customer->transactions[customer->next_transaction_index] =
+        std::move(transaction);
+    customer->next_transaction_index =
+        (customer->next_transaction_index + 1) % 10;
+    if (customer->transaction_count <= 10) {
+      customer->transaction_count++;
+    }
+
+    if (!InsertCustomer(*customer, id)) {
+      LOG(ERROR) << "Failed to insert customer" << std::endl;
+      continue;
+    }
+
+    if (mysql_commit(conn)) {
+      LOG(ERROR) << "Failed to commit transaction: " << mysql_error(conn);
+      continue;
+    }
+    success = true;
   }
 
   return TransactionResult::SUCCESS;
