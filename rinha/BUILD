@@ -5,7 +5,6 @@ cc_binary(
         "@abseil//:abseil",
         "@glog//:glog",
         "@threadpool//:threadpool",
-        "@simdjson//:simdjson",
         ":request_handler",
         ":maria_database",
     ]
@@ -37,7 +36,6 @@ cc_library(
         "@abseil//:abseil",
         "@abseil//:abseil-absl_time",
         "@glog//:glog",
-        "@simdjson//:simdjson",
         ":structs",
     ]
 )

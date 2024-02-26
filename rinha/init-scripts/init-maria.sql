@@ -11,5 +11,5 @@ FLUSH PRIVILEGES;
 -- Create a table in the sampledb database
 CREATE TABLE IF NOT EXISTS Users (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  data BLOB(572)
+  data BLOB(372)
 );

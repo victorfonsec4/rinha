@@ -6,7 +6,6 @@
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "glog/logging.h"
-#include "simdjson.h"
 
 #include "rinha/structs.h"
 
@@ -15,8 +14,6 @@ namespace {
 constexpr char kGetVerb[] = "GET";
 
 constexpr char kPostBeginBody[] = "\r\n\r\n";
-
-thread_local simdjson::ondemand::parser parser;
 
 bool SubstringToInt(absl::string_view body, size_t start, size_t end, int *x) {
   *x = 0;

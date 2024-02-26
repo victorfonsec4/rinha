@@ -12,7 +12,7 @@ enum class Result { SUCCESS, INVALID_REQUEST, NOT_FOUND };
 struct Transaction {
   int value;
   char description[11];
-  char timestamp[40];
+  char timestamp[20];
 };
 
 struct Customer {

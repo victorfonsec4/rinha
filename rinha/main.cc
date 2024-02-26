@@ -15,7 +15,6 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "glog/logging.h"
-#include "simdjson.h"
 
 #include "rinha/maria_database.h"
 #include "rinha/request_handler.h"
@@ -41,8 +40,7 @@ constexpr char kNotFoundHeader[] = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
 constexpr size_t kNotFoundHeaderLength = sizeof(kNotFoundHeader);
 
 constexpr int kBufferWrittableSize = 1024;
-constexpr int kBufferTotalSize =
-    kBufferWrittableSize + simdjson::SIMDJSON_PADDING;
+constexpr int kBufferTotalSize = kBufferWrittableSize + 1;
 constexpr int kMaxEvents = 256;
 
 namespace {
