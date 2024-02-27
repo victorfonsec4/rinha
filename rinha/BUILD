@@ -7,6 +7,7 @@ cc_binary(
         "@threadpool//:threadpool",
         ":request_handler",
         ":maria_database",
+        ":from_http",
     ]
 )
 

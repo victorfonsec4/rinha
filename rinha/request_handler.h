@@ -7,8 +7,7 @@
 
 namespace rinha {
 
-Result HandleRequest(const std::vector<char> buffer,
-                     std::string *response_body);
+Result HandleRequest(Request &&request, std::string *response_body);
 
 } // namespace rinha
 

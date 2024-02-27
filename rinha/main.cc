@@ -16,6 +16,7 @@
 #include "absl/time/time.h"
 #include "glog/logging.h"
 
+#include "rinha/from_http.h"
 #include "rinha/maria_database.h"
 #include "rinha/request_handler.h"
 
@@ -42,17 +43,29 @@ constexpr size_t kNotFoundHeaderLength = sizeof(kNotFoundHeader);
 constexpr int kBufferWrittableSize = 1024;
 constexpr int kBufferTotalSize = kBufferWrittableSize + 1;
 constexpr int kMaxEvents = 256;
+constexpr int kMaxConnections = 3000;
 
 namespace {
-void ProcessRequest(std::vector<char> &&buffer, ssize_t num_read,
+std::vector<std::vector<char>> buffers;
+
+void ProcessRequest(std::vector<char> *buffer_p, ssize_t num_read,
                     int client_fd) {
+  std::vector<char> &buffer = *buffer_p;
   buffer[num_read] = '\0';
   DLOG(INFO) << "Received " << num_read << " bytes";
   DLOG(INFO) << "Received request: " << std::endl << buffer.data();
 
   // TODO: can we use the same buffer for the response?
-  std::string response_body(kOkHeaderLength + 1024, '\0');
-  rinha::Result result = rinha::HandleRequest(buffer, &response_body);
+  static thread_local std::string response_body(kOkHeaderLength + 1024, '\0');
+  rinha::Request request;
+  bool success = rinha::FromHttp(buffer.data(), &request);
+
+  rinha::Result result;
+  if (!success) {
+    result = rinha::Result::INVALID_REQUEST;
+  } else {
+    result = rinha::HandleRequest(std::move(request), &response_body);
+  }
 
   const char *http_response = kOkHeader;
   size_t http_response_length = kOkHeaderLength;
@@ -119,6 +132,9 @@ int main(int argc, char *argv[]) {
 
   ThreadPool process_pool(num_process_threads);
   ThreadPool connection_pool(num_connection_threads);
+
+  buffers = std::vector<std::vector<char>>(kMaxConnections,
+                                           std::vector<char>(kBufferTotalSize));
 
   int server_fd;
   struct sockaddr_un server_addr;
@@ -216,10 +232,11 @@ int main(int argc, char *argv[]) {
           }
           // Handle connection data
         } else {
-          std::vector<char> buffer(kBufferTotalSize);
-          // Save a spot for the null terminator
-          ssize_t count =
-              read(events[i].data.fd, buffer.data(), kBufferWrittableSize - 1);
+          static thread_local std::vector<std::vector<char>> buffers(
+              kMaxConnections, std::vector<char>(kBufferTotalSize));
+          static thread_local unsigned int buffer_index = 0;
+          ssize_t count = read(events[i].data.fd, buffers[buffer_index].data(),
+                               kBufferWrittableSize - 1);
           if (count == -1) {
             LOG(ERROR) << "Failed to read from socket: " << strerror(errno);
             close(events[i].data.fd);
@@ -230,10 +247,11 @@ int main(int argc, char *argv[]) {
             continue;
           }
 
-          process_pool.enqueue([b = std::move(buffer), count,
+          process_pool.enqueue([b = &buffers[buffer_index], count,
                                 client_fd = events[i].data.fd]() mutable {
-            ProcessRequest(std::move(b), count, client_fd);
+            ProcessRequest(b, count, client_fd);
           });
+          buffer_index = (buffer_index + 1) % kMaxConnections;
         }
       }
     }
