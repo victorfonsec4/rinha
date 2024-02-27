@@ -4,9 +4,9 @@
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <thread>
 #include <unistd.h>
 
-#include "ThreadPool.h"
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/flags/usage.h"
@@ -17,92 +17,22 @@
 #include "glog/logging.h"
 
 #include "rinha/from_http.h"
+#include "rinha/io_thread_pool.h"
 #include "rinha/maria_database.h"
 #include "rinha/request_handler.h"
+#include "rinha/structs.h"
+#include "rinha/thread_pool.h"
 
 ABSL_FLAG(std::string, socket_path, "/tmp/unix_socket_example.sock",
           "path to socket file");
 
-ABSL_FLAG(int, num_process_threads, 10,
+ABSL_FLAG(int, num_process_threads, 20,
           "Number of threads for requesting processing");
 
-ABSL_FLAG(int, num_connection_threads, 2,
+ABSL_FLAG(int, num_connection_threads, 1,
           "Number of threads for handling connections");
 
-constexpr char kOkHeader[] =
-    "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ";
-constexpr size_t kOkHeaderLength = sizeof(kOkHeader);
-
-constexpr char kBadRequestHeader[] =
-    "HTTP/1.1 422 Unprocessable Entity\r\n\r\n";
-constexpr size_t kBadRequestHeaderLength = sizeof(kBadRequestHeader);
-
-constexpr char kNotFoundHeader[] = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
-constexpr size_t kNotFoundHeaderLength = sizeof(kNotFoundHeader);
-
-constexpr int kBufferWrittableSize = 1024;
-constexpr int kBufferTotalSize = kBufferWrittableSize + 1;
-constexpr int kMaxEvents = 256;
-constexpr int kMaxConnections = 3000;
-
 namespace {
-std::vector<std::vector<char>> buffers;
-
-void ProcessRequest(std::vector<char> *buffer_p, ssize_t num_read,
-                    int client_fd) {
-  std::vector<char> &buffer = *buffer_p;
-  buffer[num_read] = '\0';
-  DLOG(INFO) << "Received " << num_read << " bytes";
-  DLOG(INFO) << "Received request: " << std::endl << buffer.data();
-
-  // TODO: can we use the same buffer for the response?
-  static thread_local std::string response_body(kOkHeaderLength + 1024, '\0');
-  rinha::Request request;
-  bool success = rinha::FromHttp(buffer.data(), &request);
-
-  rinha::Result result;
-  if (!success) {
-    result = rinha::Result::INVALID_REQUEST;
-  } else {
-    result = rinha::HandleRequest(std::move(request), &response_body);
-  }
-
-  const char *http_response = kOkHeader;
-  size_t http_response_length = kOkHeaderLength;
-
-  std::string payload_response;
-  switch (result) {
-  case rinha::Result::SUCCESS: {
-    // TODO: can we avoid this copy?
-    payload_response = absl::StrCat(kOkHeader, response_body.size(), "\r\n\r\n",
-                                    response_body);
-    http_response = payload_response.c_str();
-    http_response_length = payload_response.size();
-    break;
-  }
-  case rinha::Result::INVALID_REQUEST:
-    http_response = kBadRequestHeader;
-    http_response_length = kBadRequestHeaderLength;
-    break;
-  case rinha::Result::NOT_FOUND:
-    http_response = kNotFoundHeader;
-    http_response_length = kNotFoundHeaderLength;
-    break;
-  default:
-    DCHECK(false);
-    break;
-  }
-
-  // Send response
-  DLOG(INFO) << "Sending response: " << std::endl << http_response;
-  ssize_t r = write(client_fd, http_response, http_response_length);
-  if (r == -1) {
-    LOG(ERROR) << "Failed to send response: " << strerror(errno);
-  }
-
-  // TODO: Is there some kinda of keep alive that can be implemented here?
-  close(client_fd);
-}
 
 void SetNonBlocking(int socket_fd) {
   int flags = fcntl(socket_fd, F_GETFL, 0);
@@ -129,12 +59,6 @@ int main(int argc, char *argv[]) {
 
   int num_process_threads = absl::GetFlag(FLAGS_num_process_threads);
   int num_connection_threads = absl::GetFlag(FLAGS_num_connection_threads);
-
-  ThreadPool process_pool(num_process_threads);
-  ThreadPool connection_pool(num_connection_threads);
-
-  buffers = std::vector<std::vector<char>>(kMaxConnections,
-                                           std::vector<char>(kBufferTotalSize));
 
   int server_fd;
   struct sockaddr_un server_addr;
@@ -188,74 +112,18 @@ int main(int argc, char *argv[]) {
   // Initialize database and locks
   CHECK(rinha::MariaInitializeDb());
 
-  LOG(INFO) << "Initializing database threads...";
-  absl::Barrier barrier(num_process_threads + 1);
-  for (int i = 0; i < num_process_threads; i++) {
-    process_pool.enqueue([&barrier]() {
-      CHECK(rinha::MariaInitializeThread());
-      barrier.Block();
-    });
-  }
-  barrier.Block();
-  LOG(INFO) << "Database threads initialized.";
+  LOG(INFO) << "Initializing threads...";
+  rinha::InitializeThreadPool(num_process_threads);
+  rinha::InitializeIoThreadPool(num_connection_threads, epoll_fd, server_fd);
 
   LOG(INFO) << "Socket path: " << socket_path;
   LOG(INFO) << "Number of process threads: " << num_process_threads;
   LOG(INFO) << "Number of connection threads: " << num_connection_threads;
 
-  connection_pool.enqueue([epoll_fd, server_fd, &process_pool]() {
-    std::vector<epoll_event> events(kMaxEvents);
-    while (true) {
-      int num_events = epoll_wait(epoll_fd, events.data(), kMaxEvents, -1);
-      for (int i = 0; i < num_events; i++) {
-        // Look for new connections
-        if (events[i].data.fd == server_fd) {
-          int client_fd = accept(server_fd, NULL, NULL);
-          if (client_fd == -1) {
-            LOG(ERROR) << "Failed to accept new connection: "
-                       << strerror(errno);
-            continue;
-          }
-
-          epoll_event client_event;
-          client_event.events = EPOLLIN | EPOLLET;
-          client_event.data.fd = client_fd;
-
-          SetNonBlocking(events[i].data.fd);
-
-          if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &client_event) ==
-              -1) {
-            LOG(ERROR) << "Failed to add client socket to epoll: "
-                       << strerror(errno);
-            close(client_fd);
-            continue;
-          }
-          // Handle connection data
-        } else {
-          static thread_local std::vector<std::vector<char>> buffers(
-              kMaxConnections, std::vector<char>(kBufferTotalSize));
-          static thread_local unsigned int buffer_index = 0;
-          ssize_t count = read(events[i].data.fd, buffers[buffer_index].data(),
-                               kBufferWrittableSize - 1);
-          if (count == -1) {
-            LOG(ERROR) << "Failed to read from socket: " << strerror(errno);
-            close(events[i].data.fd);
-            continue;
-          } else if (count == 0) {
-            // Client disconnected
-            close(events[i].data.fd);
-            continue;
-          }
-
-          process_pool.enqueue([b = &buffers[buffer_index], count,
-                                client_fd = events[i].data.fd]() mutable {
-            ProcessRequest(b, count, client_fd);
-          });
-          buffer_index = (buffer_index + 1) % kMaxConnections;
-        }
-      }
-    }
-  });
+  DLOG(INFO) << "Server ready for connections.";
+  while (true) {
+    std::this_thread::sleep_for(std::chrono::seconds(50));
+  }
 
   return 0;
 }

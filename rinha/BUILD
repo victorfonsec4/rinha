@@ -4,10 +4,12 @@ cc_binary(
     deps = [
         "@abseil//:abseil",
         "@glog//:glog",
-        "@threadpool//:threadpool",
         ":request_handler",
         ":maria_database",
         ":from_http",
+        ":thread_pool",
+        ":io_thread_pool",
+        ":structs",
     ]
 )
 
@@ -77,5 +79,40 @@ cc_library(
         "@mariadb-connector-c//:mariadb-connector-c",
         ":structs",
         ":to_json",
+    ]
+)
+
+cc_library(
+    name = "thread_pool",
+    hdrs = ["thread_pool.h"],
+    srcs = ["thread_pool.cc"],
+    deps = [
+        "@abseil//:abseil",
+        "@glog//:glog",
+        ":request_processor",
+        ":maria_database",
+])
+
+
+cc_library(
+    name = "io_thread_pool",
+    hdrs = ["io_thread_pool.h"],
+    srcs = ["io_thread_pool.cc"],
+    deps = [
+        "@abseil//:abseil",
+        "@glog//:glog",
+        ":thread_pool",
+    ])
+
+cc_library(
+    name = "request_processor",
+    hdrs = ["request_processor.h"],
+    srcs = ["request_processor.cc"],
+    deps = [
+        "@abseil//:abseil",
+        "@glog//:glog",
+        ":request_handler",
+        ":from_http",
+        ":structs"
     ]
 )

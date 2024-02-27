@@ -9,10 +9,6 @@ bool MariaInitializeDb();
 bool MariaDbGetCustomer(int id, Customer *customer);
 TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
                                             Customer *customer);
-TransactionResult MariaDbExecuteTransactionCheating(int id,
-                                                    Transaction &&transaction,
-                                                    Customer *customer);
-
 } // namespace rinha
 
 #endif

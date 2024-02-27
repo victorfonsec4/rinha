@@ -2,6 +2,7 @@
 #define RINHA_STRUCTS_H
 
 #include <string>
+#include <vector>
 
 namespace rinha {
 
@@ -27,6 +28,12 @@ struct Request {
   RequestType type;
   int id;
   Transaction transaction;
+};
+
+struct process_params {
+  std::vector<char> *buffer_p;
+  ssize_t num_read;
+  int client_fd;
 };
 } // namespace rinha
 
