@@ -4,7 +4,7 @@
 #include <string>
 
 namespace rinha {
-std::string GetTime();
-} //namespace rinha
+char *GetTime();
+} // namespace rinha
 
 #endif

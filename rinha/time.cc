@@ -7,20 +7,21 @@
 
 namespace rinha {
 namespace {
-thread_local std::string time_str =
-    absl::FormatTime("%Y-%m-%d %H:%M", absl::Now(), absl::LocalTimeZone());
+thread_local char time_str[20] = "a";
 thread_local absl::Time last_update = absl::Now();
 constexpr absl::Duration kCalculateInterval = absl::Seconds(30);
-} //namespace
+} // namespace
 
-
-std::string GetTime() {
-  if (absl::Now() - last_update > kCalculateInterval) {
+char *GetTime() {
+  if ((absl::Now() - last_update > kCalculateInterval) || time_str[0] == 'a') {
     last_update = absl::Now();
-    time_str = absl::FormatTime("%Y-%m-%d %H:%M", last_update, absl::LocalTimeZone());
+    // 2024-02-27 21:36
+    strncpy(
+        time_str,
+        absl::FormatTime("%E4Y-%m-%d %H:%M", last_update, absl::LocalTimeZone())
+            .c_str(),
+        20);
   }
   return time_str;
 }
-}
-
-
+} // namespace rinha

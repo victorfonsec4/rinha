@@ -87,23 +87,25 @@ bool UpdateCustomer(const Customer &customer, const int id, const int version) {
   if (mysql_stmt_bind_param(stmt, bind)) {
     LOG(ERROR) << "mysql_stmt_bind_param() failed";
     LOG(ERROR) << " " << mysql_stmt_error(stmt);
+    mysql_stmt_free_result(stmt);
     return false;
   }
 
   if (mysql_stmt_execute(stmt)) {
     LOG(ERROR) << "mysql_stmt_execute(), 1 failed";
     LOG(ERROR) << " " << mysql_stmt_error(stmt);
+    mysql_stmt_free_result(stmt);
     return false;
   }
 
   my_ulonglong affected_rows = mysql_affected_rows(conn);
   if (affected_rows == 0) {
     DLOG(ERROR) << "Lock conflict rerunning";
+    mysql_stmt_free_result(stmt);
     return false;
   }
 
-  mysql_stmt_reset(stmt);
-
+  mysql_stmt_free_result(stmt);
   return true;
 }
 
@@ -128,17 +130,18 @@ bool InsertCustomer(const Customer &customer, const int id) {
   if (mysql_stmt_bind_param(insert_stmt, bind)) {
     LOG(ERROR) << "mysql_stmt_bind_param() failed";
     LOG(ERROR) << " " << mysql_stmt_error(insert_stmt);
+    mysql_stmt_free_result(insert_stmt);
     return false;
   }
 
   if (mysql_stmt_execute(insert_stmt)) {
     LOG(ERROR) << "mysql_stmt_execute(), 1 failed";
     LOG(ERROR) << " " << mysql_stmt_error(insert_stmt);
+    mysql_stmt_free_result(insert_stmt);
     return false;
   }
 
-  mysql_stmt_reset(insert_stmt);
-
+  mysql_stmt_free_result(insert_stmt);
   return true;
 }
 
@@ -265,6 +268,7 @@ bool ReadCustomer(const int id, Customer *customer, int *version) {
   if (mysql_stmt_bind_result(select_stmt, results_bind)) {
     LOG(ERROR) << "mysql_stmt_execute(), 1 failed";
     LOG(ERROR) << " " << mysql_stmt_error(select_stmt);
+    mysql_stmt_free_result(select_stmt);
     return false;
   }
 
@@ -273,12 +277,12 @@ bool ReadCustomer(const int id, Customer *customer, int *version) {
     LOG(ERROR) << "mysql_stmt_fetch(), 1 failed: "
                << mysql_stmt_error(select_stmt) << " "
                << mysql_stmt_errno(select_stmt) << " " << rc;
+    mysql_stmt_free_result(select_stmt);
     return false;
   }
 
   *customer = std::move(*reinterpret_cast<Customer *>(blob_buffer));
-
-  mysql_stmt_reset(select_stmt);
+  mysql_stmt_free_result(select_stmt);
 
   return true;
 }
@@ -294,7 +298,7 @@ bool MariaInitializeDb() {
     if (!success) {
       LOG(ERROR) << "Retrying to connect to MariaDB...";
     }
-    sleep(5);
+    sleep(10);
   }
 
   LOG(INFO) << "Connected to MariaDB";
@@ -335,16 +339,17 @@ TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
 
   bool success = false;
   customer_write_mutexs[id].Lock();
-  absl::Cleanup mutex_unlocker = [&] { customer_write_mutexs[id].Unlock(); };
   while (!success) {
     int version;
 
     if (!ReadCustomer(id, customer, &version)) {
       LOG(ERROR) << "Failed to read customer";
+      customer_write_mutexs[id].Unlock();
       continue;
     }
 
     if (customer->balance + transaction.value < -customer->limit) {
+      customer_write_mutexs[id].Unlock();
       return TransactionResult::LIMIT_EXCEEDED;
     }
 
@@ -358,14 +363,17 @@ TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
     }
 
     if (!UpdateCustomer(*customer, id, version)) {
-      LOG(ERROR) << "Failed to insert customer" << std::endl;
+      customer_write_mutexs[id].Unlock();
+      DLOG(ERROR) << "Failed to insert customer" << std::endl;
       continue;
     }
 
     if (mysql_commit(conn)) {
+      customer_write_mutexs[id].Unlock();
       LOG(ERROR) << "Failed to commit transaction: " << mysql_error(conn);
       continue;
     }
+    customer_write_mutexs[id].Unlock();
     success = true;
   }
 

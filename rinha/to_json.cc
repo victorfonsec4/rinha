@@ -72,21 +72,6 @@ std::string CustomerToJson(const Customer &customer,
                    to_json(customer.transactions, customer.transaction_count,
                            customer.next_transaction_index),
                    kEnd);
-  // try {
-  //   auto parsed_json = nlohmann::json::parse(json);
-  // } catch (nlohmann::json::parse_error &e) {
-  //   LOG(ERROR) << json;
-  //   LOG(ERROR) << "JSON is invalid: " << e.what() << std::endl;
-  //   LOG(ERROR) << "Customer: " << customer.balance << " " << customer.limit
-  //              << std::endl;
-  //   LOG(ERROR) << "Transaction count: " << customer.transaction_count
-  //              << std::endl;
-  //   LOG(ERROR) << "Next transaction index: " << customer.next_transaction_index
-  //              << std::endl;
-  //   for (int i = 0; i < std::min(customer.transaction_count, 10); i++) {
-  //     LOG(ERROR) << to_json(customer.transactions[i]) << std::endl;
-  //   }
-  // }
 
   return json;
 }

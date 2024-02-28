@@ -50,16 +50,17 @@ void InitializeIoThreadPool(size_t num_threads, int epoll_fd, int server_fd) {
 
         n = epoll_wait(epoll_fd, events.data(), kMaxEvents, -1);
         for (i = 0; i < n; i++) {
-          DLOG(INFO) << "New epoll event: " << events[i].events;
-          if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) ||
-              (!(events[i].events & EPOLLIN))) {
+          const auto &event = events[i];
+          DLOG(INFO) << "New epoll event: " << event.events;
+          if ((event.events & EPOLLERR) || (event.events & EPOLLHUP) ||
+              (!(event.events & EPOLLIN))) {
             // An error has occured on this fd, or the socket is not
             // ready for reading (why were we notified then?)
             LOG(ERROR) << "epoll error: " << strerror(errno)
-                       << "events: " << events[i].events;
-            close(events[i].data.fd);
+                       << "events: " << event.events;
+            close(event.data.fd);
             continue;
-          } else if (server_fd == events[i].data.fd) {
+          } else if (server_fd == event.data.fd) {
             // We have a notification on the listening socket, which
             // means one or more incoming connections.
             DLOG(INFO) << "New connection";
@@ -105,10 +106,10 @@ void InitializeIoThreadPool(size_t num_threads, int epoll_fd, int server_fd) {
             int done = 0;
 
             ssize_t total_count = 0;
-            DLOG(INFO) << "Reading from client: " << events[i].data.fd;
+            DLOG(INFO) << "Reading from client: " << event.data.fd;
             while (true) {
               ssize_t count;
-              count = read(events[i].data.fd,
+              count = read(event.data.fd,
                            buffers[buffer_index].data() + total_count,
                            kBufferWrittableSize - total_count);
               DLOG(INFO) << "Read " << count << " bytes";
@@ -126,7 +127,7 @@ void InitializeIoThreadPool(size_t num_threads, int epoll_fd, int server_fd) {
                 // connection.
                 DLOG(INFO)
                     << "Received 0 bytes ,closed connection on descriptor "
-                    << events[i].data.fd;
+                    << event.data.fd;
                 done = 1;
                 break;
               }
@@ -141,7 +142,7 @@ void InitializeIoThreadPool(size_t num_threads, int epoll_fd, int server_fd) {
 
               ProcessRequestParams params;
               params.num_read = total_count;
-              params.client_fd = events[i].data.fd;
+              params.client_fd = event.data.fd;
               params.buffer_p = &buffers[buffer_index];
               rinha::EnqueueProcessRequest(std::move(params));
 
@@ -149,12 +150,11 @@ void InitializeIoThreadPool(size_t num_threads, int epoll_fd, int server_fd) {
             }
 
             if (done) {
-              LOG(ERROR) << "Closed connection on descriptor "
-                         << events[i].data.fd;
+              LOG(ERROR) << "Closed connection on descriptor " << event.data.fd;
 
               // Closing the descriptor will make epoll remove it
               // from the set of descriptors which are monitored.
-              close(events[i].data.fd);
+              close(event.data.fd);
             }
           }
         }

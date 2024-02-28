@@ -11,7 +11,7 @@
 namespace rinha {
 
 Result HandleRequest(Request &&request, std::string *response_body) {
-  std::string current_time = GetTime();
+  char *current_time = GetTime();
 
   if (request.type == RequestType::BALANCE) {
     Customer customer;
@@ -25,10 +25,8 @@ Result HandleRequest(Request &&request, std::string *response_body) {
     return Result::SUCCESS;
   }
 
-  std::strncpy(request.transaction.timestamp, current_time.data(),
-               sizeof(request.transaction.timestamp) - 1);
-  request.transaction.timestamp[sizeof(request.transaction.timestamp) - 1] =
-      '\0';
+  std::strncpy(request.transaction.timestamp, current_time,
+               sizeof(request.transaction.timestamp));
 
   Customer customer;
   TransactionResult result = MariaDbExecuteTransaction(
