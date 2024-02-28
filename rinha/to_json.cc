@@ -26,9 +26,33 @@ constexpr char kTransacaoRealizada[] = R"(","realizada_em":")";
 constexpr char kTransacaoEnd[] = R"("})";
 constexpr char kEnd[] = R"(]})";
 
-constexpr char kResultLimite[] = R"({"limite":)";
-constexpr char kResultSaldo[] = R"(,"saldo":)";
-constexpr char kResultEnd[] = R"(})";
+constexpr char kTransactionResult[] =
+    R"({"limite":                    , "saldo":                     })";
+constexpr int kLimiteEndIdx = 29;
+constexpr int kSaldoEndIdx = 60;
+
+void WriteNumberToString(int number, char *str, int end_idx) {
+  if (number == 0) {
+    str[end_idx] = '0';
+    return;
+  }
+
+  bool is_negative = (number < 0);
+  if (is_negative) {
+    number = -number;
+  }
+  int i = end_idx;
+  while (number > 0) {
+    str[i] = number % 10 + '0';
+    number /= 10;
+    i--;
+  }
+  if (is_negative) {
+    str[i] = '-';
+  }
+}
+
+} // namespace
 
 std::string to_json(const Transaction &transaction) {
   return absl::StrCat(
@@ -62,7 +86,6 @@ std::string to_json(const Transaction transactions[], int transaction_count,
 
   return json;
 }
-} // namespace
 
 std::string CustomerToJson(const Customer &customer,
                            std::string &&data_extrato) {
@@ -77,8 +100,13 @@ std::string CustomerToJson(const Customer &customer,
 }
 
 std::string TransactionResultToJson(const Customer &customer) {
-  std::string json = absl::StrCat(kResultLimite, customer.limit, kResultSaldo,
-                                  customer.balance, kResultEnd);
+  std::string json(sizeof(kTransactionResult) - 1, '\0');
+  std::memcpy(json.data(), kTransactionResult, sizeof(kTransactionResult) - 1);
+
+  WriteNumberToString(customer.limit, json.data(), kLimiteEndIdx);
+
+  WriteNumberToString(customer.balance, json.data(), kSaldoEndIdx);
+
   return json;
 }
 

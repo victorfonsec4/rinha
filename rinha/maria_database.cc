@@ -344,7 +344,6 @@ TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
 
     if (!ReadCustomer(id, customer, &version)) {
       LOG(ERROR) << "Failed to read customer";
-      customer_write_mutexs[id].Unlock();
       continue;
     }
 
@@ -363,13 +362,11 @@ TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
     }
 
     if (!UpdateCustomer(*customer, id, version)) {
-      customer_write_mutexs[id].Unlock();
       DLOG(ERROR) << "Failed to insert customer" << std::endl;
       continue;
     }
 
     if (mysql_commit(conn)) {
-      customer_write_mutexs[id].Unlock();
       LOG(ERROR) << "Failed to commit transaction: " << mysql_error(conn);
       continue;
     }
