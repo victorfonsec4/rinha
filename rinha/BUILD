@@ -13,6 +13,16 @@ cc_binary(
     ]
 )
 
+cc_binary(
+    name = "epoll_minimum",
+    srcs = ["epoll.cc"],
+    deps = [
+        "@abseil//:abseil",
+        "@glog//:glog",
+        ":thread_pool_200",
+    ]
+)
+
 cc_library(
     name = "structs",
     srcs = ["structs.h"],
@@ -92,6 +102,16 @@ cc_library(
         ":request_processor",
         ":maria_database",
 ])
+
+cc_library(
+    name = "thread_pool_200",
+    hdrs = ["thread_pool_200.h"],
+    srcs = ["thread_pool_200.cc"],
+    deps = [
+        "@abseil//:abseil",
+        "@glog//:glog",
+    ])
+
 
 
 cc_library(

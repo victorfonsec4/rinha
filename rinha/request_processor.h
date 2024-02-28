@@ -4,10 +4,11 @@
 #include <unistd.h>
 #include <vector>
 
+#include "rinha/structs.h"
+
 namespace rinha {
 
-void ProcessRequest(std::vector<char> *buffer_p, ssize_t num_read,
-                    int client_fd);
+void ProcessRequest(ProcessRequestParams &&params);
 
 } // namespace rinha
 

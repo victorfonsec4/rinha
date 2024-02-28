@@ -46,6 +46,28 @@ void SetNonBlocking(int socket_fd) {
   }
 }
 
+int CreateAndBind(const char *path) {
+  struct sockaddr_un addr;
+  int sfd = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (sfd == -1) {
+    std::cerr << "socket" << std::endl;
+    return -1;
+  }
+
+  memset(&addr, 0, sizeof(struct sockaddr_un));
+  addr.sun_family = AF_UNIX;
+  strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
+
+  unlink(path); // Remove the socket if it already exists
+
+  if (bind(sfd, (struct sockaddr *)&addr, sizeof(struct sockaddr_un)) == -1) {
+    std::cerr << "bind" << std::endl;
+    return -1;
+  }
+
+  return sfd;
+}
+
 void signalHandler(int signum) { exit(signum); }
 } // namespace
 
@@ -61,42 +83,26 @@ int main(int argc, char *argv[]) {
   int num_connection_threads = absl::GetFlag(FLAGS_num_connection_threads);
 
   int server_fd;
-  struct sockaddr_un server_addr;
-  int epoll_fd = epoll_create1(0);
+  int epoll_fd;
+
   std::string socket_path = absl::GetFlag(FLAGS_socket_path);
   // Create socket and bind server socket
   {
-    server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (server_fd == -1) {
-      LOG(ERROR) << "Failed to create socket";
-      return -1;
-    }
+    server_fd = CreateAndBind(socket_path.c_str());
 
     SetNonBlocking(server_fd);
 
-    // Bind socket to socket path
-    server_addr.sun_family = AF_UNIX;
-    strncpy(server_addr.sun_path, socket_path.c_str(),
-            sizeof(server_addr.sun_path) - 1);
-    unlink(socket_path.c_str()); // Remove the socket if it already exists
-    if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) ==
-        -1) {
-      LOG(ERROR) << "Bind failed";
-      LOG(ERROR) << "Error: " << strerror(errno);
-      close(server_fd);
-      return -1;
-    }
-
-    if (listen(server_fd, 5) == -1) {
+    if (listen(server_fd, SOMAXCONN) == -1) {
       LOG(ERROR) << "Failled to listen on the socket: " << strerror(errno);
       close(server_fd);
       return 1;
     }
 
     epoll_event accept_event;
-    accept_event.events = EPOLLIN;
+    accept_event.events = EPOLLIN | EPOLLET;
     accept_event.data.fd = server_fd;
 
+    epoll_fd = epoll_create1(0);
     if (epoll_fd == -1) {
       LOG(ERROR) << "Failed to create epoll fd: " << strerror(errno);
       return 1;

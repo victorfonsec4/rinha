@@ -1,24 +1,21 @@
-#include "rinha/thread_pool.h"
+#include "rinha/thread_pool_200.h"
 
 #include <condition_variable>
 #include <functional>
 #include <iostream>
 #include <mutex>
 #include <queue>
+#include <sys/epoll.h>
 #include <thread>
 #include <vector>
 
 #include "glog/logging.h"
 
-#include "rinha/maria_database.h"
-#include "rinha/request_processor.h"
-#include "rinha/structs.h"
-
 namespace rinha {
 namespace {
 
 std::vector<std::thread> workers;
-std::queue<ProcessRequestParams> tasks;
+std::queue<int> tasks;
 std::mutex queue_mutex;
 std::condition_variable condition;
 bool stop;
@@ -27,29 +24,35 @@ bool stop;
 void InitializeThreadPool(size_t num_threads) {
   for (size_t i = 0; i < num_threads; ++i) {
     workers.emplace_back([] {
-      CHECK(rinha::MariaInitializeThread());
       while (true) {
-        static thread_local ProcessRequestParams task;
+        static thread_local int client_fd;
         {
           std::unique_lock<std::mutex> lock(queue_mutex);
           condition.wait(lock, [] { return stop || !tasks.empty(); });
           if (stop && tasks.empty())
             return;
-          task = std::move(tasks.front());
+          client_fd = tasks.front();
           tasks.pop();
         }
-        ProcessRequest(std::move(task));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        static const char *response = "HTTP/1.1 200 OK\r\n"
+                                      "Content-Length: 0\r\n"
+                                      "Connection: keep-alive\r\n"
+                                      "\r\n";
+
+        write(client_fd, response, strlen(response));
       }
     });
   }
 }
 
-void EnqueueProcessRequest(ProcessRequestParams &&f) {
+void EnqueueProcessRequest(int client_fd) {
   DLOG(INFO) << "Enqueueing process request";
   {
     std::unique_lock<std::mutex> lock(queue_mutex);
-    tasks.emplace(std::move(f));
+    tasks.emplace(client_fd);
   }
+
   condition.notify_one();
 }
 

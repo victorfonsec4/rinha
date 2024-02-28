@@ -5,7 +5,7 @@
 
 namespace rinha {
 void InitializeThreadPool(size_t num_threads);
-void EnqueueProcessRequest(process_params &&f);
+void EnqueueProcessRequest(ProcessRequestParams &&f);
 } // namespace rinha
 
 #endif

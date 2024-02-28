@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "absl/synchronization/notification.h"
+
 namespace rinha {
 
 enum class TransactionResult { SUCCESS, LIMIT_EXCEEDED, NOT_FOUND };
@@ -30,10 +32,11 @@ struct Request {
   Transaction transaction;
 };
 
-struct process_params {
+struct ProcessRequestParams {
   std::vector<char> *buffer_p;
   ssize_t num_read;
   int client_fd;
+  int epoll_fd;
 };
 } // namespace rinha
 
