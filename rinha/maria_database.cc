@@ -15,6 +15,7 @@ thread_local MYSQL *conn;
 thread_local MYSQL_STMT *insert_stmt;
 thread_local MYSQL_STMT *update_stmt;
 thread_local MYSQL_STMT *select_stmt;
+thread_local MYSQL_STMT *select_for_update_stmt;
 
 absl::Mutex customer_write_mutexs[5];
 
@@ -26,6 +27,9 @@ constexpr char stmt_update[] =
     "version = ?";
 
 constexpr char stmt_select[] = "SELECT data, version FROM Users WHERE id = ?";
+
+constexpr char stmt_select_for_update[] =
+    "SELECT data, version FROM Users WHERE id = ? FOR UPDATE";
 
 constexpr Customer kInitialCustomers[] = {
     {.limit = 100000,
@@ -187,6 +191,19 @@ bool LazyInitializeStatements() {
     return false;
   }
 
+  select_for_update_stmt = mysql_stmt_init(conn);
+  if (!select_for_update_stmt) {
+    LOG(ERROR) << "mysql_stmt_init(), out of memory";
+    return false;
+  }
+
+  if (mysql_stmt_prepare(select_for_update_stmt, stmt_select_for_update,
+                         strlen(stmt_select_for_update))) {
+    LOG(ERROR) << "mysql_stmt_prepare(), SELECT failed";
+    LOG(ERROR) << " " << mysql_stmt_error(select_for_update_stmt);
+    return false;
+  }
+
   update_stmt = mysql_stmt_init(conn);
   if (!update_stmt) {
     LOG(ERROR) << "mysql_stmt_init(), out of memory";
@@ -287,6 +304,80 @@ bool ReadCustomer(const int id, Customer *customer, int *version) {
   return true;
 }
 
+bool ReadCustomerForUpdate(const int id, Customer *customer, int *version) {
+  DLOG(INFO) << "Reading customer " << id;
+
+  thread_local MYSQL_STMT *stmt = select_for_update_stmt;
+
+  MYSQL_BIND params_bind[1];
+  memset(params_bind, 0, sizeof(params_bind));
+
+  // ID
+  params_bind[0].buffer_type = MYSQL_TYPE_LONG;
+  params_bind[0].buffer =
+      const_cast<char *>(reinterpret_cast<const char *>(&id));
+  params_bind[0].is_null = 0;
+  params_bind[0].length = 0;
+
+  if (mysql_stmt_bind_param(stmt, params_bind)) {
+    LOG(ERROR) << "mysql_stmt_bind_param() failed";
+    LOG(ERROR) << " " << mysql_stmt_error(stmt);
+    return false;
+  }
+
+  if (mysql_stmt_execute(stmt)) {
+    LOG(ERROR) << "mysql_stmt_execute(), 1 failed";
+    LOG(ERROR) << " " << mysql_stmt_error(stmt);
+    return false;
+  }
+
+  unsigned char blob_buffer[sizeof(
+      Customer)]; // Adjust the buffer size according to your needs
+  my_bool is_null[2];
+  my_bool error[2];
+  unsigned long length[2];
+
+  MYSQL_BIND results_bind[2];
+  memset(results_bind, 0, sizeof(results_bind));
+
+  // data
+  results_bind[0].buffer_type = MYSQL_TYPE_BLOB;
+  results_bind[0].buffer = blob_buffer;
+  results_bind[0].buffer_length = sizeof(blob_buffer);
+  results_bind[0].is_null = &is_null[0];
+  results_bind[0].length = &length[0];
+  results_bind[0].error = &error[0];
+
+  // version
+  results_bind[1].buffer_type = MYSQL_TYPE_LONG;
+  results_bind[1].buffer =
+      const_cast<char *>(reinterpret_cast<const char *>(version));
+  results_bind[1].buffer_length = sizeof(*version);
+  results_bind[1].is_null = &is_null[1];
+  results_bind[1].length = &length[1];
+  results_bind[1].error = &error[1];
+
+  if (mysql_stmt_bind_result(stmt, results_bind)) {
+    LOG(ERROR) << "mysql_stmt_execute(), 1 failed";
+    LOG(ERROR) << " " << mysql_stmt_error(stmt);
+    mysql_stmt_free_result(stmt);
+    return false;
+  }
+
+  int rc = mysql_stmt_fetch(stmt);
+  if (rc != 0) {
+    LOG(ERROR) << "mysql_stmt_fetch(), 1 failed: " << mysql_stmt_error(stmt)
+               << " " << mysql_stmt_errno(stmt) << " " << rc;
+    mysql_stmt_free_result(stmt);
+    return false;
+  }
+
+  *customer = std::move(*reinterpret_cast<Customer *>(blob_buffer));
+  mysql_stmt_free_result(stmt);
+
+  return true;
+}
+
 } // namespace
 
 bool MariaInitializeDb() {
@@ -342,13 +433,21 @@ TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
   while (!success) {
     int version;
 
-    if (!ReadCustomer(id, customer, &version)) {
+    DLOG(INFO) << "Starting transaction for customer " << id;
+    if (mysql_query(conn, "START TRANSACTION")) {
+      LOG(ERROR) << "Failed to start transaction: " << mysql_error(conn);
+      continue;
+    }
+
+    if (!ReadCustomerForUpdate(id, customer, &version)) {
       LOG(ERROR) << "Failed to read customer";
+      mysql_rollback(conn);
       continue;
     }
 
     if (customer->balance + transaction.value < -customer->limit) {
       customer_write_mutexs[id].Unlock();
+      mysql_rollback(conn);
       return TransactionResult::LIMIT_EXCEEDED;
     }
 
@@ -361,13 +460,15 @@ TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
       customer->transaction_count++;
     }
 
-    if (!UpdateCustomer(*customer, id, version)) {
+    if (!InsertCustomer(*customer, id)) {
       DLOG(ERROR) << "Failed to insert customer" << std::endl;
+      mysql_rollback(conn);
       continue;
     }
 
     if (mysql_commit(conn)) {
       LOG(ERROR) << "Failed to commit transaction: " << mysql_error(conn);
+      mysql_rollback(conn);
       continue;
     }
     customer_write_mutexs[id].Unlock();
