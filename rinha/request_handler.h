@@ -7,7 +7,8 @@
 
 namespace rinha {
 
-Result HandleRequest(Request &&request, std::string *response_body);
+Result HandleRequest(Request &&request, std::string *response_body,
+                     Customer *customer);
 
 } // namespace rinha
 

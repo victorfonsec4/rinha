@@ -27,6 +27,48 @@ constexpr size_t kBadRequestHeaderLength = sizeof(kBadRequestHeader);
 constexpr char kNotFoundHeader[] =
     "HTTP/1.1 404 NOT FOUND\r\nContent-Length: 0\r\n\r\n";
 constexpr size_t kNotFoundHeaderLength = sizeof(kNotFoundHeader);
+
+thread_local char transaction_result_buffer[140] =
+    "HTTP/1.1 200 OK\r\nContent-Type: "              // 31
+    "application/json\r\nContent-Length: 62\r\n\r\n" // 40
+    "{\"limite\":                    , \"saldo\":                     }";
+constexpr int kLimiteBeginIdx = 31 + 40 + 11 - 1;
+constexpr int kLimiteEndIdx = 31 + 40 + 30 - 1;
+constexpr int kSaldoBeginIdx = 31 + 40 + 41 - 1;
+constexpr int kSaldoEndIdx = 31 + 40 + 61 - 1;
+
+void WriteNumberToString(int number, char *str, int end_idx) {
+  if (number == 0) {
+    str[end_idx] = '0';
+    return;
+  }
+
+  bool is_negative = (number < 0);
+  if (is_negative) {
+    number = -number;
+  }
+  int i = end_idx;
+  while (number > 0) {
+    str[i] = number % 10 + '0';
+    number /= 10;
+    i--;
+  }
+  if (is_negative) {
+    str[i] = '-';
+  }
+}
+void BuildTransactionResponse(char *prebuilt_buffer, const Customer &customer) {
+  // Clears the buffer before writing to it
+  memset(prebuilt_buffer + kLimiteBeginIdx, ' ',
+         kLimiteEndIdx - kLimiteBeginIdx + 1);
+  memset(prebuilt_buffer + kSaldoBeginIdx, ' ',
+         kSaldoEndIdx - kSaldoBeginIdx + 1);
+
+  WriteNumberToString(customer.limit, prebuilt_buffer, kLimiteEndIdx);
+
+  WriteNumberToString(customer.balance, prebuilt_buffer, kSaldoEndIdx);
+}
+
 } // namespace
 
 void ProcessRequest(ProcessRequestParams &&params) {
@@ -44,10 +86,12 @@ void ProcessRequest(ProcessRequestParams &&params) {
   DLOG(INFO) << "Response json body: " << response_body;
 
   rinha::Result result;
+  Customer customer;
   if (!success) {
     result = rinha::Result::INVALID_REQUEST;
   } else {
-    result = rinha::HandleRequest(std::move(request), &response_body);
+    result =
+        rinha::HandleRequest(std::move(request), &response_body, &customer);
     DLOG(INFO) << "Response json body: " << response_body;
   }
 
@@ -57,12 +101,19 @@ void ProcessRequest(ProcessRequestParams &&params) {
   std::string payload_response;
   switch (result) {
   case rinha::Result::SUCCESS: {
-    // TODO: can we avoid this copy?
-    payload_response = absl::StrCat(kOkHeader, response_body.size(), "\r\n\r\n",
-                                    response_body);
-    http_response = payload_response.c_str();
-    http_response_length = payload_response.size();
-    break;
+    if (request.type == rinha::RequestType::TRANSACTION) {
+      BuildTransactionResponse(transaction_result_buffer, customer);
+      http_response = transaction_result_buffer;
+      http_response_length = sizeof(transaction_result_buffer);
+      break;
+    } else {
+      // TODO: can we avoid this copy?
+      payload_response = absl::StrCat(kOkHeader, response_body.size(),
+                                      "\r\n\r\n", response_body);
+      http_response = payload_response.c_str();
+      http_response_length = payload_response.size();
+      break;
+    }
   }
   case rinha::Result::INVALID_REQUEST:
     http_response = kBadRequestHeader;

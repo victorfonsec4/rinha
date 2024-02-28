@@ -10,7 +10,8 @@
 
 namespace rinha {
 
-Result HandleRequest(Request &&request, std::string *response_body) {
+Result HandleRequest(Request &&request, std::string *response_body,
+                     Customer *customer) {
   char *current_time = GetTime();
 
   if (request.type == RequestType::BALANCE) {
@@ -25,12 +26,10 @@ Result HandleRequest(Request &&request, std::string *response_body) {
     return Result::SUCCESS;
   }
 
-  std::strncpy(request.transaction.timestamp, current_time,
-               sizeof(request.transaction.timestamp));
+  std::strcpy(request.transaction.timestamp, current_time);
 
-  Customer customer;
   TransactionResult result = MariaDbExecuteTransaction(
-      request.id, std::move(request.transaction), &customer);
+      request.id, std::move(request.transaction), customer);
   if (result == TransactionResult::NOT_FOUND) {
     DLOG(ERROR) << "Customer not found" << std::endl;
     return Result::NOT_FOUND;
@@ -41,7 +40,6 @@ Result HandleRequest(Request &&request, std::string *response_body) {
     return Result::INVALID_REQUEST;
   }
 
-  *response_body = TransactionResultToJson(customer);
   return Result::SUCCESS;
 }
 
