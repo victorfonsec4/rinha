@@ -26,16 +26,27 @@ DELIMITER $$
   CREATE PROCEDURE rinha_execute_transaction(IN p_id INT ,IN p_transaction BLOB,
                                              OUT p_customer BLOB)
   BEGIN
-    START TRANSACTION;
-    SELECT rinha_business_logic_udf(data, p_transaction) INTO p_customer
-      FROM Users
-     WHERE id = p_id FOR UPDATE;
+    DECLARE read_version INT;
+    DECLARE success INT DEFAULT 0;
+    DECLARE affectedRows INT DEFAULT 0;
+    WHILE success = 0 DO
+      START TRANSACTION;
+      SELECT rinha_business_logic_udf(data, p_transaction), version INTO p_customer, read_version
+        FROM Users
+       WHERE id = p_id;
 
-    IF p_customer IS NOT NULL THEN
-      UPDATE Users
-      SET data = p_customer
-      WHERE id = p_id;
-    END IF;
+      IF p_customer IS NOT NULL THEN
+        UPDATE Users
+        SET data = p_customer, version = version + 1
+        WHERE id = p_id AND version = read_version;
+        SELECT ROW_COUNT() INTO affectedRows;
+        IF affectedRows = 1 THEN
+          SET success = 1;
+        END IF;
+      ELSE
+        SET success = 1;
+      END IF;
     COMMIT;
+    END WHILE;
   END$$
 DELIMITER ;
