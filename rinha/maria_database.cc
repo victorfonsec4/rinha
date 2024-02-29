@@ -168,13 +168,13 @@ static void test_stmt_error(MYSQL_STMT *stmt, int status) {
   }
 }
 
-bool StoredProcedureLoop(Customer *customer) {
+bool StoredProcedureLoop(CustomerAccount *acc) {
   MYSQL_STMT *stmt = udf_stmt;
   my_bool is_null[1];
   int status;
   bool null_result = true;
 
-  unsigned char blob_buffer[sizeof(Customer)];
+  unsigned char blob_buffer[sizeof(CustomerAccount)];
   memset(blob_buffer, 0, sizeof(blob_buffer)); // Zero out the buffer
 
   /* process results until there are no more */
@@ -241,7 +241,7 @@ bool StoredProcedureLoop(Customer *customer) {
 
         DCHECK(num_fields == 1);
         null_result = *rs_bind[0].is_null;
-        *customer = std::move(*reinterpret_cast<Customer *>(blob_buffer));
+        *acc = std::move(*reinterpret_cast<CustomerAccount *>(blob_buffer));
       }
 
       mysql_free_result(rs_metadata); /* free metadata */
@@ -261,7 +261,7 @@ bool StoredProcedureLoop(Customer *customer) {
 }
 
 bool RunStoredProcedure(const int id, const Transaction &transaction,
-                        Customer *customer) {
+                        CustomerAccount *acc) {
   MYSQL_BIND bind[3];
   memset(bind, 0, sizeof(bind));
 
@@ -281,9 +281,9 @@ bool RunStoredProcedure(const int id, const Transaction &transaction,
   bind[1].length = &size_transaction;
 
   // Customer
-  unsigned char blob_buffer[sizeof(Customer)];
+  unsigned char blob_buffer[sizeof(CustomerAccount)];
   memset(blob_buffer, 0, sizeof(blob_buffer)); // Zero out the buffer
-  unsigned long size_blob = sizeof(Customer);
+  unsigned long size_blob = sizeof(CustomerAccount);
   bind[2].buffer_type = MYSQL_TYPE_BLOB;
   bind[2].buffer = blob_buffer;
   bind[2].buffer_length = size_blob;
@@ -310,10 +310,10 @@ bool RunStoredProcedure(const int id, const Transaction &transaction,
     return false;
   }
 
-  bool success = StoredProcedureLoop(customer);
+  bool success = StoredProcedureLoop(acc);
   if (!success) {
     DLOG(INFO) << "LIMIT EXCEEDED";
-    customer = nullptr;
+    acc = nullptr;
     mysql_stmt_free_result(stmt);
     // TODO: We need to find a way to properly handle this since reseting is
     //  expensive
@@ -322,8 +322,8 @@ bool RunStoredProcedure(const int id, const Transaction &transaction,
     return true;
   }
 
-  DLOG(INFO) << "Got customer limit: " << customer->limit
-             << " balance: " << customer->balance;
+  DLOG(INFO) << "Got customer limit: " << acc->limit
+             << " balance: " << acc->balance;
 
   mysql_stmt_free_result(stmt);
   // TODO: We need to find a way to properly handle this since reseting is
@@ -617,17 +617,17 @@ bool MariaDbGetCustomer(int id, Customer *customer) {
 }
 
 TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
-                                            Customer *customer) {
+                                            CustomerAccount *acc) {
   if (id > 5 || id < 1) {
     return TransactionResult::NOT_FOUND;
   }
   id--;
 
-  if (!RunStoredProcedure(id, transaction, customer)) {
+  if (!RunStoredProcedure(id, transaction, acc)) {
     DLOG(ERROR) << "Failed to run stored procedure";
     return TransactionResult::NOT_FOUND;
   }
-  if (customer == nullptr) {
+  if (acc == nullptr) {
     return TransactionResult::LIMIT_EXCEEDED;
   }
 

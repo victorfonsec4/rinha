@@ -24,6 +24,11 @@ struct Customer {
   char next_transaction_index;
 };
 
+struct CustomerAccount {
+  int limit;
+  int balance;
+};
+
 struct Request {
   RequestType type;
   int id;

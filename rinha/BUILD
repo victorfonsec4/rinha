@@ -164,3 +164,17 @@ cc_binary(
         ":structs",
     ],
 )
+
+cc_binary(
+    name = "get_account_udf.so",
+    linkshared = 1,
+    copts = [
+        "-fPIC",
+    ],
+    srcs = ["get_account_udf.cc"],
+    deps = [
+        "@glog//:glog",
+        "@mariadb-connector-c//:mariadb-connector-c",
+        ":structs",
+    ],
+)
