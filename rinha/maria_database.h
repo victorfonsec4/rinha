@@ -8,7 +8,7 @@ bool MariaInitializeThread();
 bool MariaInitializeDb();
 bool MariaDbGetCustomer(int id, Customer *customer);
 TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
-                                            CustomerAccount *acc);
+                                            Customer *customer);
 } // namespace rinha
 
 #endif

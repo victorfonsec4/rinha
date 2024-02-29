@@ -57,17 +57,16 @@ void WriteNumberToString(int number, char *str, int end_idx) {
     str[i] = '-';
   }
 }
-void BuildTransactionResponse(char *prebuilt_buffer,
-                              const CustomerAccount &acc) {
+void BuildTransactionResponse(char *prebuilt_buffer, const Customer &customer) {
   // Clears the buffer before writing to it
   memset(prebuilt_buffer + kLimiteBeginIdx, ' ',
          kLimiteEndIdx - kLimiteBeginIdx + 1);
   memset(prebuilt_buffer + kSaldoBeginIdx, ' ',
          kSaldoEndIdx - kSaldoBeginIdx + 1);
 
-  WriteNumberToString(acc.limit, prebuilt_buffer, kLimiteEndIdx);
+  WriteNumberToString(customer.limit, prebuilt_buffer, kLimiteEndIdx);
 
-  WriteNumberToString(acc.balance, prebuilt_buffer, kSaldoEndIdx);
+  WriteNumberToString(customer.balance, prebuilt_buffer, kSaldoEndIdx);
 }
 
 } // namespace
@@ -84,13 +83,15 @@ void ProcessRequest(ProcessRequestParams &&params) {
   static thread_local std::string response_body(kOkHeaderLength + 1024, '\0');
   rinha::Request request;
   bool success = rinha::FromHttp(buffer.data(), &request);
+  DLOG(INFO) << "Response json body: " << response_body;
 
   rinha::Result result;
-  CustomerAccount acc;
+  Customer customer;
   if (!success) {
     result = rinha::Result::INVALID_REQUEST;
   } else {
-    result = rinha::HandleRequest(std::move(request), &response_body, &acc);
+    result =
+        rinha::HandleRequest(std::move(request), &response_body, &customer);
     DLOG(INFO) << "Response json body: " << response_body;
   }
 
@@ -101,7 +102,7 @@ void ProcessRequest(ProcessRequestParams &&params) {
   switch (result) {
   case rinha::Result::SUCCESS: {
     if (request.type == rinha::RequestType::TRANSACTION) {
-      BuildTransactionResponse(transaction_result_buffer, acc);
+      BuildTransactionResponse(transaction_result_buffer, customer);
       http_response = transaction_result_buffer;
       http_response_length = sizeof(transaction_result_buffer);
       break;

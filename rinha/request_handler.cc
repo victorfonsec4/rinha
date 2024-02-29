@@ -11,7 +11,7 @@
 namespace rinha {
 
 Result HandleRequest(Request &&request, std::string *response_body,
-                     CustomerAccount *acc) {
+                     Customer *customer) {
   char *current_time = GetTime();
 
   if (request.type == RequestType::BALANCE) {
@@ -29,7 +29,7 @@ Result HandleRequest(Request &&request, std::string *response_body,
   std::strcpy(request.transaction.timestamp, current_time);
 
   TransactionResult result = MariaDbExecuteTransaction(
-      request.id, std::move(request.transaction), acc);
+      request.id, std::move(request.transaction), customer);
   if (result == TransactionResult::NOT_FOUND) {
     DLOG(ERROR) << "Customer not found" << std::endl;
     return Result::NOT_FOUND;

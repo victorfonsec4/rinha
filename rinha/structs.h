@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "absl/synchronization/notification.h"
+
 namespace rinha {
 
 enum class TransactionResult { SUCCESS, LIMIT_EXCEEDED, NOT_FOUND };
@@ -22,11 +24,6 @@ struct Customer {
   Transaction transactions[10];
   char transaction_count;
   char next_transaction_index;
-};
-
-struct CustomerAccount {
-  int limit;
-  int balance;
 };
 
 struct Request {

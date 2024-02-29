@@ -8,7 +8,7 @@
 namespace rinha {
 
 Result HandleRequest(Request &&request, std::string *response_body,
-                     CustomerAccount *acc);
+                     Customer *customer);
 
 } // namespace rinha
 
