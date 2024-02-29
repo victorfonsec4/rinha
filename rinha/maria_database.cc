@@ -16,6 +16,7 @@ thread_local MYSQL_STMT *insert_stmt;
 thread_local MYSQL_STMT *update_stmt;
 thread_local MYSQL_STMT *select_stmt;
 thread_local MYSQL_STMT *select_for_update_stmt;
+thread_local MYSQL_STMT *udf_stmt;
 
 absl::Mutex customer_write_mutexs[5];
 
@@ -30,6 +31,8 @@ constexpr char stmt_select[] = "SELECT data, version FROM Users WHERE id = ?";
 
 constexpr char stmt_select_for_update[] =
     "SELECT data, version FROM Users WHERE id = ? FOR UPDATE";
+
+constexpr char stmt_udf[] = "CALL rinha_execute_transaction(?, ?, ?)";
 
 constexpr Customer kInitialCustomers[] = {
     {.limit = 100000,
@@ -149,6 +152,186 @@ bool InsertCustomer(const Customer &customer, const int id) {
   return true;
 }
 
+static void test_error(MYSQL *mysql, int status) {
+  if (status) {
+    DLOG(ERROR) << "Error: " << mysql_error(mysql) << mysql_errno(mysql);
+    DCHECK(false);
+  }
+}
+
+static void test_stmt_error(MYSQL_STMT *stmt, int status) {
+  if (status) {
+    DLOG(ERROR) << "Error: " << mysql_stmt_error(stmt)
+                << mysql_stmt_errno(stmt);
+    DCHECK(false);
+    exit(1);
+  }
+}
+
+bool StoredProcedureLoop(Customer *customer) {
+  MYSQL_STMT *stmt = udf_stmt;
+  my_bool is_null[1];
+  int status;
+  bool null_result = true;
+
+  unsigned char blob_buffer[sizeof(Customer)];
+  memset(blob_buffer, 0, sizeof(blob_buffer)); // Zero out the buffer
+
+  /* process results until there are no more */
+  do {
+    DLOG(INFO) << "EXECUTING UDF LOOP";
+    int i;
+    int num_fields;      /* number of columns in result */
+    MYSQL_FIELD *fields; /* for result set metadata */
+    MYSQL_BIND *rs_bind; /* for output buffers */
+
+    /* the column count is > 0 if there is a result set */
+    /* 0 if the result is only the final status packet */
+    num_fields = mysql_stmt_field_count(stmt);
+
+    if (num_fields > 0) {
+      /* there is a result set to fetch */
+      DLOG(INFO) << "Number of columns in result: " << num_fields;
+
+      /* what kind of result set is this? */
+      DLOG(INFO) << "Data: ";
+      if (conn->server_status & SERVER_PS_OUT_PARAMS)
+        DLOG(INFO) << "this result set contains OUT/INOUT parameters";
+      else
+        DLOG(INFO) << "this result set is produced by the procedure";
+
+      MYSQL_RES *rs_metadata = mysql_stmt_result_metadata(stmt);
+      test_stmt_error(stmt, rs_metadata == NULL);
+
+      fields = mysql_fetch_fields(rs_metadata);
+
+      rs_bind = (MYSQL_BIND *)malloc(sizeof(MYSQL_BIND) * num_fields);
+      if (!rs_bind) {
+        DLOG(INFO) << "Cannot allocate output buffers";
+        exit(1);
+      }
+      memset(rs_bind, 0, sizeof(MYSQL_BIND) * num_fields);
+
+      /* set up and bind result set output buffers */
+      for (i = 0; i < num_fields; ++i) {
+        rs_bind[i].buffer_type = fields[i].type;
+        rs_bind[i].is_null = &is_null[i];
+
+        switch (fields[i].type) {
+        case MYSQL_TYPE_BLOB:
+          rs_bind[i].buffer = (char *)&(blob_buffer);
+          rs_bind[i].buffer_length = sizeof(blob_buffer);
+          break;
+
+        default:
+          DLOG(ERROR) << "ERROR: unexpected type: " << fields[i].type;
+          DCHECK(false);
+        }
+      }
+
+      status = mysql_stmt_bind_result(stmt, rs_bind);
+      test_stmt_error(stmt, status);
+
+      /* fetch and display result set rows */
+      while (1) {
+        status = mysql_stmt_fetch(stmt);
+
+        if (status == 1 || status == MYSQL_NO_DATA)
+          break;
+
+        DCHECK(num_fields == 1);
+        null_result = *rs_bind[0].is_null;
+        *customer = std::move(*reinterpret_cast<Customer *>(blob_buffer));
+      }
+
+      mysql_free_result(rs_metadata); /* free metadata */
+      free(rs_bind);                  /* free output buffers */
+    } else {
+      /* no columns = final status packet */
+      DLOG(INFO) << "End of procedure output";
+    }
+
+    /* more results? -1 = no, >0 = error, 0 = yes (keep looking) */
+    status = mysql_stmt_next_result(stmt);
+    if (status > 0)
+      test_stmt_error(stmt, status);
+  } while (status == 0);
+
+  return !null_result;
+}
+
+bool RunStoredProcedure(const int id, const Transaction &transaction,
+                        Customer *customer) {
+  MYSQL_BIND bind[3];
+  memset(bind, 0, sizeof(bind));
+
+  // ID
+  bind[0].buffer_type = MYSQL_TYPE_LONG;
+  bind[0].buffer = const_cast<char *>(reinterpret_cast<const char *>(&id));
+  bind[0].is_null = 0;
+  bind[0].length = 0;
+
+  // Transaction
+  unsigned long size_transaction = sizeof(Transaction);
+  bind[1].buffer_type = MYSQL_TYPE_BLOB;
+  bind[1].buffer =
+      const_cast<char *>(reinterpret_cast<const char *>(&transaction));
+  bind[1].buffer_length = size_transaction;
+  bind[1].is_null = 0;
+  bind[1].length = &size_transaction;
+
+  // Customer
+  unsigned char blob_buffer[sizeof(Customer)];
+  memset(blob_buffer, 0, sizeof(blob_buffer)); // Zero out the buffer
+  unsigned long size_blob = sizeof(Customer);
+  bind[2].buffer_type = MYSQL_TYPE_BLOB;
+  bind[2].buffer = blob_buffer;
+  bind[2].buffer_length = size_blob;
+  bind[2].is_null = 0;
+  bind[2].length = &size_blob;
+
+  MYSQL_STMT *stmt = udf_stmt;
+
+  DLOG(INFO) << "Binding parameters for UDF";
+  if (mysql_stmt_bind_param(stmt, bind)) {
+    LOG(ERROR) << "mysql_stmt_bind_param() failed";
+    LOG(ERROR) << " " << mysql_stmt_error(stmt);
+    mysql_stmt_free_result(stmt);
+    DCHECK(false);
+    return false;
+  }
+
+  DLOG(INFO) << "Running UDF";
+  if (mysql_stmt_execute(stmt)) {
+    LOG(ERROR) << "mysql_stmt_execute(), 1 failed";
+    LOG(ERROR) << " " << mysql_stmt_error(stmt);
+    mysql_stmt_free_result(stmt);
+    DCHECK(false);
+    return false;
+  }
+
+  bool success = StoredProcedureLoop(customer);
+  if (!success) {
+    DLOG(INFO) << "LIMIT EXCEEDED";
+    customer = nullptr;
+    mysql_stmt_free_result(stmt);
+    // TODO: We need to find a way to properly handle this since reseting is
+    //  expensive
+    mysql_stmt_reset(stmt);
+
+    return true;
+  }
+
+  DLOG(INFO) << "Got customer limit: " << customer->limit
+             << " balance: " << customer->balance;
+
+  mysql_stmt_free_result(stmt);
+  // TODO: We need to find a way to properly handle this since reseting is
+  //  expensive
+  mysql_stmt_reset(stmt);
+  return true;
+}
+
 bool LazyInitializeDb() {
   conn = mysql_init(NULL);
   if (conn == NULL) {
@@ -213,6 +396,18 @@ bool LazyInitializeStatements() {
   if (mysql_stmt_prepare(update_stmt, stmt_update, strlen(stmt_update))) {
     LOG(ERROR) << "mysql_stmt_prepare(), SELECT failed";
     LOG(ERROR) << " " << mysql_stmt_error(update_stmt);
+    return false;
+  }
+
+  udf_stmt = mysql_stmt_init(conn);
+  if (!udf_stmt) {
+    LOG(ERROR) << "mysql_stmt_init(), out of memory";
+    return false;
+  }
+
+  if (mysql_stmt_prepare(udf_stmt, stmt_udf, strlen(stmt_udf))) {
+    LOG(ERROR) << "mysql_stmt_prepare(), SELECT failed";
+    LOG(ERROR) << " " << mysql_stmt_error(udf_stmt);
     return false;
   }
 
@@ -428,51 +623,12 @@ TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
   }
   id--;
 
-  bool success = false;
-  customer_write_mutexs[id].Lock();
-  while (!success) {
-    int version;
-
-    DLOG(INFO) << "Starting transaction for customer " << id;
-    if (mysql_query(conn, "START TRANSACTION")) {
-      LOG(ERROR) << "Failed to start transaction: " << mysql_error(conn);
-      continue;
-    }
-
-    if (!ReadCustomerForUpdate(id, customer, &version)) {
-      LOG(ERROR) << "Failed to read customer";
-      mysql_rollback(conn);
-      continue;
-    }
-
-    if (customer->balance + transaction.value < -customer->limit) {
-      customer_write_mutexs[id].Unlock();
-      mysql_rollback(conn);
-      return TransactionResult::LIMIT_EXCEEDED;
-    }
-
-    customer->balance += transaction.value;
-    customer->transactions[customer->next_transaction_index] =
-        std::move(transaction);
-    customer->next_transaction_index =
-        (customer->next_transaction_index + 1) % 10;
-    if (customer->transaction_count <= 10) {
-      customer->transaction_count++;
-    }
-
-    if (!InsertCustomer(*customer, id)) {
-      DLOG(ERROR) << "Failed to insert customer" << std::endl;
-      mysql_rollback(conn);
-      continue;
-    }
-
-    if (mysql_commit(conn)) {
-      LOG(ERROR) << "Failed to commit transaction: " << mysql_error(conn);
-      mysql_rollback(conn);
-      continue;
-    }
-    customer_write_mutexs[id].Unlock();
-    success = true;
+  if (!RunStoredProcedure(id, transaction, customer)) {
+    DLOG(ERROR) << "Failed to run stored procedure";
+    return TransactionResult::NOT_FOUND;
+  }
+  if (customer == nullptr) {
+    return TransactionResult::LIMIT_EXCEEDED;
   }
 
   return TransactionResult::SUCCESS;

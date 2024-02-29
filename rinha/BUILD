@@ -136,3 +136,31 @@ cc_library(
         ":structs"
     ]
 )
+
+cc_binary(
+    name = "business_logic_udf.so",
+    linkshared = 1,
+    copts = [
+        "-fPIC",
+    ],
+    srcs = ["business_logic_udf.cc"],
+    deps = [
+        "@glog//:glog",
+        "@mariadb-connector-c//:mariadb-connector-c",
+        ":structs",
+    ],
+)
+
+cc_binary(
+    name = "print_customer_udf.so",
+    linkshared = 1,
+    copts = [
+        "-fPIC",
+    ],
+    srcs = ["print_customer.cc"],
+    deps = [
+        "@glog//:glog",
+        "@mariadb-connector-c//:mariadb-connector-c",
+        ":structs",
+    ],
+)

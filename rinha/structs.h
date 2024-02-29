@@ -4,8 +4,6 @@
 #include <string>
 #include <vector>
 
-#include "absl/synchronization/notification.h"
-
 namespace rinha {
 
 enum class TransactionResult { SUCCESS, LIMIT_EXCEEDED, NOT_FOUND };

@@ -83,7 +83,6 @@ void ProcessRequest(ProcessRequestParams &&params) {
   static thread_local std::string response_body(kOkHeaderLength + 1024, '\0');
   rinha::Request request;
   bool success = rinha::FromHttp(buffer.data(), &request);
-  DLOG(INFO) << "Response json body: " << response_body;
 
   rinha::Result result;
   Customer customer;
