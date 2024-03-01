@@ -2,7 +2,7 @@ FROM library/nginx:latest
 
 RUN rm /etc/nginx/conf.d/default.conf
 
-COPY nginx.conf /etc/nginx/
+COPY nginx.conf /etc/nginx/nginx.conf
 COPY start_nginx.sh /usr/local/bin/start_nginx.sh
 RUN chmod +x /usr/local/bin/start_nginx.sh
 

@@ -1,4 +1,4 @@
-FROM library/mariadb:11.3.2
+FROM library/mysql:8.3.0
 
 ENV MYSQL_ROOT_PASSWORD=my-secret-pw
 ENV MYSQL_DATABASE=mydatabase

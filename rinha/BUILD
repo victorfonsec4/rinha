@@ -86,7 +86,7 @@ cc_library(
     deps = [
         "@abseil//:abseil",
         "@glog//:glog",
-        "@mariadb-connector-c//:mariadb-connector-c",
+        "@libmysqlclient//:libmysqlclient",
         ":structs",
         ":to_json",
     ]
