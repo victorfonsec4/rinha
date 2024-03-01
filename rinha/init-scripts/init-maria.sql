@@ -3,12 +3,13 @@ CREATE DATABASE IF NOT EXISTS mydb;
 USE mydb;
 
 GRANT ALL PRIVILEGES ON mydb.* TO 'victor'@'%' IDENTIFIED BY 'mypassword';
-GRANT ALL PRIVILEGES ON mydb.* TO 'rinha'@'%' IDENTIFIED BY 'mypassword';
+GRANT ALL PRIVILEGES ON mydb.* TO 'rinha'@'localhost' IDENTIFIED BY 'mypassword';
 GRANT ALL PRIVILEGES ON mydb.* TO 'root'@'%' IDENTIFIED BY 'mypassword';
 
-FLUSH PRIVILEGES;
+GRANT SUPER ON *.* TO 'victor'@'%';
+GRANT INSERT ON mysql.plugin TO 'victor'@'%';
 
-INSTALL PLUGIN handlersocket SONAME 'handlersocket.so';
+FLUSH PRIVILEGES;
 
 -- Create a table in the sampledb database
 CREATE TABLE IF NOT EXISTS Users (
@@ -16,3 +17,4 @@ CREATE TABLE IF NOT EXISTS Users (
   data BLOB(372),
   version INT DEFAULT 1
 );
+CREATE INDEX handlers_index ON Users (id);

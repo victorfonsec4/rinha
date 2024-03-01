@@ -157,7 +157,7 @@ bool LazyInitializeDb() {
   }
 
   if (mysql_real_connect(conn, "localhost", "rinha", "mypassword", "mydb", 0,
-                         "/run/mysqld/mysqld.sock", 0) == NULL) {
+                         "/tmp/mysql.sock", 0) == NULL) {
     LOG(ERROR) << "mysql_real_connect() failed : " << mysql_error(conn);
     return false;
   }
