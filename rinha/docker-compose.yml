@@ -9,7 +9,7 @@ services:
     hostname: api01
     volumes:
       - /tmp:/tmp
-      - /var/run/mysqld:/var/run/mysqld
+      - /run/mysqld:/run/mysqld
     depends_on:
       - db
     deploy:
@@ -30,6 +30,7 @@ services:
   nginx:
     image: vifonsec/nginx2:latest
     volumes:
+      - ./nginx2.conf:/etc/nginx/nginx.conf:ro
       - /tmp:/tmp
     depends_on:
       - api01
@@ -47,11 +48,11 @@ services:
   db:
     image: vifonsec/maria:latest
     volumes:
-      - /var/run/mysqld:/var/run/mysqld
+      - /run/mysqld:/run/mysqld
     deploy:
       resources:
         limits:
           cpus: "0.2"
           memory: "350MB"
-    command: ['--sql-mode=NO_AUTO_VALUE_ON_ZERO', '--skip-log-bin', '--innodb-doublewrite=0', '--innodb-flush-log-at-trx-commit=0', '--performance-schema=0']
+    command: ['--sql-mode=NO_AUTO_VALUE_ON_ZERO', '--skip-log-bin', '--innodb-doublewrite=0', '--innodb-flush-log-at-trx-commit=0', '--query-cache-type=0', '--aria-pagecache-buffer-size=1M', '--performance-schema=0']
     network_mode: "host"

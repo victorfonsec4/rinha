@@ -2,13 +2,9 @@
 CREATE DATABASE IF NOT EXISTS mydb;
 USE mydb;
 
-CREATE USER 'victor'@'%' IDENTIFIED BY 'mypassword';
-CREATE USER 'rinha'@'%' IDENTIFIED BY 'mypassword';
-ALTER USER 'root'@'%' IDENTIFIED BY 'mypassword';
-
-GRANT ALL PRIVILEGES ON mydb.* TO 'victor'@'%';
-GRANT ALL PRIVILEGES ON mydb.* TO 'rinha'@'%';
-GRANT ALL PRIVILEGES ON mydb.* TO 'root'@'%';
+GRANT ALL PRIVILEGES ON mydb.* TO 'victor'@'%' IDENTIFIED BY 'mypassword';
+GRANT ALL PRIVILEGES ON mydb.* TO 'rinha'@'%' IDENTIFIED BY 'mypassword';
+GRANT ALL PRIVILEGES ON mydb.* TO 'root'@'%' IDENTIFIED BY 'mypassword';
 
 FLUSH PRIVILEGES;
 

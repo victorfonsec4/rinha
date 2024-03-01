@@ -4,6 +4,7 @@ services:
   nginx:
     image: vifonsec/nginx:latest
     volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - /tmp:/tmp
     ports:
         # Obrigatório expor/usar a porta 9999 no load balancer!
@@ -18,11 +19,11 @@ services:
   db:
     image: vifonsec/maria:latest
     volumes:
-      - /var/run/mysqld:/var/run/mysqld
+      - /run/mysqld:/run/mysqld
     deploy:
       resources:
         limits:
           cpus: "0.2"
           memory: "150MB"
-    command: ['--sql-mode=NO_AUTO_VALUE_ON_ZERO', '--skip-log-bin', '--innodb-doublewrite=0', '--innodb-flush-log-at-trx-commit=0', '--performance-schema=0']
+    command: ['--sql-mode=NO_AUTO_VALUE_ON_ZERO']
     network_mode: "host"

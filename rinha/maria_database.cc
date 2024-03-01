@@ -4,7 +4,7 @@
 #include "absl/cleanup/cleanup.h"
 #include "absl/synchronization/mutex.h"
 #include "glog/logging.h"
-#include "mysql.h"
+#include "mariadb/mysql.h"
 
 #include "rinha/structs.h"
 #include "rinha/to_json.h"
@@ -157,7 +157,7 @@ bool LazyInitializeDb() {
   }
 
   if (mysql_real_connect(conn, "localhost", "rinha", "mypassword", "mydb", 0,
-                         "/var/run/mysqld/mysqld.sock", 0) == NULL) {
+                         "/run/mysqld/mysqld.sock", 0) == NULL) {
     LOG(ERROR) << "mysql_real_connect() failed : " << mysql_error(conn);
     return false;
   }
@@ -258,8 +258,8 @@ bool ReadCustomer(const int id, Customer *customer, int *version) {
 
   unsigned char blob_buffer[sizeof(
       Customer)]; // Adjust the buffer size according to your needs
-  bool is_null[2];
-  bool error[2];
+  my_bool is_null[2];
+  my_bool error[2];
   unsigned long length[2];
 
   MYSQL_BIND results_bind[2];
@@ -333,8 +333,8 @@ bool ReadCustomerForUpdate(const int id, Customer *customer, int *version) {
 
   unsigned char blob_buffer[sizeof(
       Customer)]; // Adjust the buffer size according to your needs
-  bool is_null[2];
-  bool error[2];
+  my_bool is_null[2];
+  my_bool error[2];
   unsigned long length[2];
 
   MYSQL_BIND results_bind[2];
