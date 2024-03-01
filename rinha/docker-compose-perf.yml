@@ -20,10 +20,14 @@ services:
     image: vifonsec/maria:latest
     volumes:
       - /run/mysqld:/run/mysqld
+    ports:
+        # Obrigatório expor/usar a porta 9999 no load balancer!
+      - "10019:10019"
+      - "10020:10020"
     deploy:
       resources:
         limits:
           cpus: "0.2"
           memory: "150MB"
-    command: ['--sql-mode=NO_AUTO_VALUE_ON_ZERO']
+    command: ['--sql-mode=NO_AUTO_VALUE_ON_ZERO', '--skip-log-bin', '--innodb-doublewrite=0', '--innodb-flush-log-at-trx-commit=0', '--query-cache-type=0', '--aria-pagecache-buffer-size=1M', '--performance-schema=0', '--plugin_maturity=beta']
     network_mode: "host"

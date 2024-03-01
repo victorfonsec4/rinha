@@ -8,6 +8,8 @@ GRANT ALL PRIVILEGES ON mydb.* TO 'root'@'%' IDENTIFIED BY 'mypassword';
 
 FLUSH PRIVILEGES;
 
+INSTALL PLUGIN handlersocket SONAME 'handlersocket.so';
+
 -- Create a table in the sampledb database
 CREATE TABLE IF NOT EXISTS Users (
   id INT AUTO_INCREMENT PRIMARY KEY,
