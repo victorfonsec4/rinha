@@ -26,7 +26,7 @@
 ABSL_FLAG(std::string, socket_path, "/tmp/unix_socket_example.sock",
           "path to socket file");
 
-ABSL_FLAG(std::string, handler_socket_hostname, "127.0.0.1",
+ABSL_FLAG(std::string, handler_socket_hostname, "/",
           "Hostname for the handler socket");
 
 ABSL_FLAG(int, num_process_threads, 15,
