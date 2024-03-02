@@ -6,7 +6,6 @@ class ConanDeps(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     generators = "BazelDeps", "BazelToolchain"
     requires = ["abseil/20230802.1", "glog/0.6.0",
-                "sqlite3/3.45.1", "boost/1.84.0", "libpqxx/7.9.0",
                 "mariadb-connector-c/3.3.3"]
 
     def layout(self):

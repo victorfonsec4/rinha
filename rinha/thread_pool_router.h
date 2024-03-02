@@ -5,9 +5,8 @@
 
 namespace rinha {
 struct Message {
-  int fd;
-  char *buffer;
-  size_t size;
+  int src_fd;
+  int dst_fd;
 };
 
 void InitializeThreadPool(size_t num_threads);

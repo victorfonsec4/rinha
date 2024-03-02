@@ -143,10 +143,8 @@ cc_library(
     deps = [
         "@abseil//:abseil",
         "@glog//:glog",
+        ":tbb",
     ])
-
-
-
 
 cc_library(
     name = "io_thread_pool",
@@ -193,4 +191,16 @@ cc_library(
         "@glog//:glog",
     ],
     copts = ["-Wno-deprecated-declarations"],
+)
+
+cc_library(
+    name = "tbb",
+    hdrs = glob(["include/**"]),
+    includes = ["include"],
+    linkopts = [
+        "-ltbb",
+        "-L/usr/lib/x86_64-linux-gnu",
+        "-Wl,-rpath,/usr/lib/x86_64-linux-gnu",
+    ],
+    visibility = ["//visibility:public"],
 )

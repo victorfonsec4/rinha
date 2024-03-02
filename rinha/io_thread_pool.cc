@@ -57,13 +57,14 @@ void InitializeIoThreadPool(size_t num_threads, int epoll_fd, int server_fd) {
             // An error has occured on this fd, or the socket is not
             // ready for reading (why were we notified then?)
             DLOG(ERROR) << "epoll error: " << strerror(errno)
-                        << "events: " << event.events;
+                        << " events: " << event.events;
+            DLOG(ERROR) << "Closing connection on descriptor " << event.data.fd;
             close(event.data.fd);
             continue;
           } else if (server_fd == event.data.fd) {
             // We have a notification on the listening socket, which
             // means one or more incoming connections.
-            DLOG(INFO) << "New connection";
+            DLOG(INFO) << "New connection on server_fd: " << server_fd;
             while (true) {
               DLOG(INFO) << "Accepting new connection";
               struct sockaddr in_addr;
@@ -82,6 +83,8 @@ void InitializeIoThreadPool(size_t num_threads, int epoll_fd, int server_fd) {
                   break;
                 }
               }
+
+              DLOG(INFO) << "Accepted new connection: " << infd;
 
               // Make the incoming socket non-blocking and add it to the
               // list of fds to monitor.

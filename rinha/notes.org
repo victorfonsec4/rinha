@@ -23,6 +23,9 @@ to build without the logging
 $ /home/victor/repos/WSL2-Linux-Kernel/tools/perf/perf record --call-graph dwarf /home/victor/repos/rinha/bazel-bin/rinha/main
 $ hotspot
 
+* Debugging
+$ bazel build -c dbg //rinha:main
+
 * building docker image
 
 $ bazel build -c opt --copt=-O2 --copt=-DNDEBUG //rinha:main && cp ../bazel-bin/rinha/main . && sudo docker build -f main.dockerfile -t vifonsec/rinha:latest -f main.dockerfile .

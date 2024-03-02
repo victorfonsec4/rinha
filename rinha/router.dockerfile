@@ -1,5 +1,12 @@
 FROM ubuntu
 
+# Avoid prompts from apt
+ENV DEBIAN_FRONTEND noninteractive
+
+# Install dependencies and tools
+RUN apt-get update && apt-get install -y libtbb-dev
+
+
 WORKDIR /usr/src/app
 
 COPY ./router .
