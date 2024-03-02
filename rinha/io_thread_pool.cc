@@ -56,8 +56,8 @@ void InitializeIoThreadPool(size_t num_threads, int epoll_fd, int server_fd) {
               (!(event.events & EPOLLIN))) {
             // An error has occured on this fd, or the socket is not
             // ready for reading (why were we notified then?)
-            LOG(ERROR) << "epoll error: " << strerror(errno)
-                       << "events: " << event.events;
+            DLOG(ERROR) << "epoll error: " << strerror(errno)
+                        << "events: " << event.events;
             close(event.data.fd);
             continue;
           } else if (server_fd == event.data.fd) {

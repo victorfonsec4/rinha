@@ -10,6 +10,7 @@
 
 #include "glog/logging.h"
 
+#include "rinha/handler_socket.h"
 #include "rinha/maria_database.h"
 #include "rinha/request_processor.h"
 #include "rinha/structs.h"
@@ -24,10 +25,12 @@ std::condition_variable condition;
 bool stop;
 } // namespace
 
-void InitializeThreadPool(size_t num_threads) {
+void InitializeThreadPool(size_t num_threads,
+                          absl::string_view handler_socket_hostname) {
   for (size_t i = 0; i < num_threads; ++i) {
-    workers.emplace_back([] {
+    workers.emplace_back([handler_socket_hostname] {
       CHECK(rinha::MariaInitializeThread());
+      CHECK(rinha::InitializeHs(handler_socket_hostname));
       while (true) {
         static thread_local ProcessRequestParams task;
         {

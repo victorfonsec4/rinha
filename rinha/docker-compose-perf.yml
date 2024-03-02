@@ -19,11 +19,14 @@ services:
   db:
     image: vifonsec/maria:latest
     volumes:
-      - /run/mysqld:/run/mysqld
+      - /var/run/mysqld:/var/run/mysqld
+      - /tmp:/tmp
+    ports:
+      - "10019:10019"
+      - "10020:10020"
     deploy:
       resources:
         limits:
           cpus: "0.2"
           memory: "150MB"
-    command: ['--sql-mode=NO_AUTO_VALUE_ON_ZERO']
     network_mode: "host"

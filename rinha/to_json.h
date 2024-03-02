@@ -8,7 +8,6 @@
 namespace rinha {
 std::string CustomerToJson(const Customer &customer,
                            std::string &&data_extrato);
-std::string TransactionResultToJson(const Customer &customer);
-} //namespace rinha
+} // namespace rinha
 
 #endif
