@@ -29,7 +29,8 @@ cc_binary(
     deps = [
         "@abseil//:abseil",
         "@glog//:glog",
-        "//libhsclient:hstcpcli"
+        "//libhsclient:hstcpcli",
+        ":structs",
     ]
 )
 

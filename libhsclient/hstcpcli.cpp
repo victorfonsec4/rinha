@@ -131,6 +131,7 @@ void hstcpcli::clear_error() {
 }
 
 int hstcpcli::set_error(int code, const std::string &str) {
+  printf("SET_ERROR: %d\n", code);
   DBG(fprintf(stderr, "SET_ERROR: %d\n", code));
   error_code = code;
   error_str = str;
@@ -142,6 +143,7 @@ void hstcpcli::request_buf_open_index(size_t pst_id, const char *dbn,
                                       const char *retflds,
                                       const char *filflds) {
   if (num_req_sent > 0 || num_req_rcvd > 0) {
+    printf("request_buf_open_index: protocol out of sync\n");
     close();
     set_error(-1, "request_buf_open_index: protocol out of sync");
     return;
@@ -273,10 +275,12 @@ void hstcpcli::request_buf_exec_generic(
 
 int hstcpcli::request_send() {
   if (error_code < 0) {
+    printf("request_send: error_code < 0\n");
     return error_code;
   }
   clear_error();
   if (fd.get() < 0) {
+    printf("request_send: fd < 0\n");
     close();
     return set_error(-1, "write: closed");
   }
@@ -336,6 +340,11 @@ int hstcpcli::response_recv(size_t &num_flds_r) {
   ++num_req_rcvd;
   char *start = readbuf.begin();
   char *const finish = start + response_end_offset - 1;
+  // print readbuf between start and finish
+  printf("readbuf:\n");
+  for (char *i = start; i != finish; ++i) {
+    printf("%c", *i);
+  }
 
   const size_t resp_code = read_ui32(start, finish);
   skip_one(start, finish);
