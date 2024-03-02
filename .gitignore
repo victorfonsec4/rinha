@@ -7,6 +7,8 @@
 /conan/conaninfo.txt
 /conan/graph_info.json
 /.cache
+/mariaold/mariadb-5.3.12
+/mariaold/mariadb-5.3.12.tar.gz
 MODULE.bazel
 MODULE.bazel.lock
 compile_commands.json
