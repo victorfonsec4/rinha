@@ -26,6 +26,9 @@
 ABSL_FLAG(std::string, socket_path, "/tmp/unix_socket_example.sock",
           "path to socket file");
 
+ABSL_FLAG(std::string, handler_socket_hostname, "127.0.0.1",
+          "Hostname for the handler socket");
+
 ABSL_FLAG(int, num_process_threads, 15,
           "Number of threads for requesting processing");
 
@@ -118,8 +121,11 @@ int main(int argc, char *argv[]) {
   // Initialize database and locks
   CHECK(rinha::MariaInitializeDb());
 
+  std::string handler_socket_host_name =
+      absl::GetFlag(FLAGS_handler_socket_hostname);
+
   LOG(INFO) << "Initializing threads...";
-  rinha::InitializeThreadPool(num_process_threads);
+  rinha::InitializeThreadPool(num_process_threads, handler_socket_host_name);
   rinha::InitializeIoThreadPool(num_connection_threads, epoll_fd, server_fd);
 
   LOG(INFO) << "Socket path: " << socket_path;

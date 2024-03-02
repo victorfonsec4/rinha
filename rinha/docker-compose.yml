@@ -49,10 +49,13 @@ services:
     image: vifonsec/maria:latest
     volumes:
       - /var/run/mysqld:/var/run/mysqld
+      - /tmp:/tmp
+    ports:
+      - "10019:10019"
+      - "10020:10020"
     deploy:
       resources:
         limits:
           cpus: "0.2"
           memory: "350MB"
-    command: ['mysqld', '--sql-mode=NO_AUTO_VALUE_ON_ZERO', '--skip-log-bin', '--innodb-doublewrite=0', '--innodb-flush-log-at-trx-commit=0', '--query-cache-type=0', '--verbose']
     network_mode: "host"

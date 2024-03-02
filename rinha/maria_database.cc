@@ -6,6 +6,7 @@
 #include "glog/logging.h"
 #include "mariadb/mysql.h"
 
+#include "rinha/handler_socket.h"
 #include "rinha/structs.h"
 #include "rinha/to_json.h"
 
@@ -16,6 +17,8 @@ thread_local MYSQL_STMT *insert_stmt;
 thread_local MYSQL_STMT *update_stmt;
 thread_local MYSQL_STMT *select_stmt;
 thread_local MYSQL_STMT *select_for_update_stmt;
+thread_local MYSQL_STMT *get_lock_stmt;
+thread_local MYSQL_STMT *release_lock_stmt;
 
 absl::Mutex customer_write_mutexs[5];
 
@@ -30,6 +33,10 @@ constexpr char stmt_select[] = "SELECT data, version FROM Users WHERE id = ?";
 
 constexpr char stmt_select_for_update[] =
     "SELECT data, version FROM Users WHERE id = ? FOR UPDATE";
+
+constexpr char stmt_get_lock[] = "SELECT GET_LOCK(?, 100000000)";
+
+constexpr char stmt_release_lock[] = "DO RELEASE_LOCK(?)";
 
 constexpr Customer kInitialCustomers[] = {
     {.limit = 100000,
@@ -59,59 +66,6 @@ constexpr Customer kInitialCustomers[] = {
      .next_transaction_index = 0},
 
 };
-
-bool UpdateCustomer(const Customer &customer, const int id, const int version) {
-  // Data, id, version
-  MYSQL_BIND bind[3];
-  memset(bind, 0, sizeof(bind));
-
-  // Data
-  unsigned long size = sizeof(Customer);
-  bind[0].buffer_type = MYSQL_TYPE_BLOB;
-  bind[0].buffer =
-      const_cast<char *>(reinterpret_cast<const char *>(&customer));
-  bind[0].buffer_length = size;
-  bind[0].is_null = 0;
-  bind[0].length = &size;
-
-  // ID
-  bind[1].buffer_type = MYSQL_TYPE_LONG;
-  bind[1].buffer = const_cast<char *>(reinterpret_cast<const char *>(&id));
-  bind[1].is_null = 0;
-  bind[1].length = 0;
-
-  // Version
-  bind[2].buffer_type = MYSQL_TYPE_LONG;
-  bind[2].buffer = const_cast<char *>(reinterpret_cast<const char *>(&version));
-  bind[2].is_null = 0;
-  bind[2].length = 0;
-
-  MYSQL_STMT *stmt = update_stmt;
-
-  if (mysql_stmt_bind_param(stmt, bind)) {
-    LOG(ERROR) << "mysql_stmt_bind_param() failed";
-    LOG(ERROR) << " " << mysql_stmt_error(stmt);
-    mysql_stmt_free_result(stmt);
-    return false;
-  }
-
-  if (mysql_stmt_execute(stmt)) {
-    LOG(ERROR) << "mysql_stmt_execute(), 1 failed";
-    LOG(ERROR) << " " << mysql_stmt_error(stmt);
-    mysql_stmt_free_result(stmt);
-    return false;
-  }
-
-  my_ulonglong affected_rows = mysql_affected_rows(conn);
-  if (affected_rows == 0) {
-    DLOG(ERROR) << "Lock conflict rerunning";
-    mysql_stmt_free_result(stmt);
-    return false;
-  }
-
-  mysql_stmt_free_result(stmt);
-  return true;
-}
 
 bool InsertCustomer(const Customer &customer, const int id) {
   MYSQL_BIND bind[2];
@@ -146,6 +100,114 @@ bool InsertCustomer(const Customer &customer, const int id) {
   }
 
   mysql_stmt_free_result(insert_stmt);
+  return true;
+}
+
+bool GetLock(int id) {
+  DLOG(INFO) << "Getting lock " << id;
+
+  MYSQL_BIND params_bind[1];
+  memset(params_bind, 0, sizeof(params_bind));
+
+  thread_local MYSQL_STMT *stmt = get_lock_stmt;
+
+  char id_str[1];
+  id_str[0] = id + '0';
+  // ID
+  params_bind[0].buffer_type = MYSQL_TYPE_STRING;
+  params_bind[0].buffer = id_str;
+  params_bind[0].is_null = 0;
+  params_bind[0].buffer_length = 1;
+
+  if (mysql_stmt_bind_param(stmt, params_bind)) {
+    LOG(ERROR) << "mysql_stmt_bind_param() failed";
+    LOG(ERROR) << " " << mysql_stmt_error(stmt);
+    DCHECK(false);
+    return false;
+  }
+
+  if (mysql_stmt_execute(stmt)) {
+    LOG(ERROR) << "mysql_stmt_execute(), 1 failed";
+    LOG(ERROR) << " " << mysql_stmt_error(stmt);
+    DCHECK(false);
+    return false;
+  }
+
+  MYSQL_BIND results_bind[1];
+  memset(results_bind, 0, sizeof(results_bind));
+  my_bool is_null[1];
+  my_bool error[1];
+  unsigned long length[1];
+
+  int success = 0;
+
+  // Success 1 ok 0 fail
+  results_bind[0].buffer_type = MYSQL_TYPE_LONG;
+  results_bind[0].buffer =
+      const_cast<char *>(reinterpret_cast<const char *>(&success));
+  results_bind[0].buffer_length = sizeof(success);
+  results_bind[0].is_null = &is_null[1];
+  results_bind[0].length = &length[1];
+  results_bind[0].error = &error[1];
+
+  if (mysql_stmt_bind_result(stmt, results_bind)) {
+    LOG(ERROR) << "mysql_stmt_execute(), 1 failed";
+    LOG(ERROR) << " " << mysql_stmt_error(stmt);
+    mysql_stmt_free_result(stmt);
+    DCHECK(false);
+    return false;
+  }
+
+  int rc = mysql_stmt_fetch(stmt);
+  if (rc != 0) {
+    LOG(ERROR) << "mysql_stmt_fetch(), 1 failed: " << mysql_stmt_error(stmt)
+               << " " << mysql_stmt_errno(stmt) << " " << rc;
+    mysql_stmt_free_result(stmt);
+    DCHECK(false);
+    return false;
+  }
+  DLOG(INFO) << "Is success null: " << is_null[0];
+  DLOG(INFO) << "Success: " << success;
+  DLOG(INFO) << "Finished getting lock " << id;
+  DCHECK(success == 1);
+  mysql_stmt_free_result(stmt);
+
+  return true;
+}
+
+bool ReleaseLock(int id) {
+  DLOG(INFO) << "Releasing lock " << id;
+
+  MYSQL_BIND params_bind[1];
+  memset(params_bind, 0, sizeof(params_bind));
+
+  thread_local MYSQL_STMT *stmt = release_lock_stmt;
+
+  char id_str[1];
+  id_str[0] = id + '0';
+  // ID
+  params_bind[0].buffer_type = MYSQL_TYPE_STRING;
+  params_bind[0].buffer = id_str;
+  params_bind[0].buffer_length = 1;
+  params_bind[0].is_null = 0;
+  params_bind[0].length = 0;
+
+  if (mysql_stmt_bind_param(stmt, params_bind)) {
+    LOG(ERROR) << "mysql_stmt_bind_param() failed";
+    LOG(ERROR) << " " << mysql_stmt_error(stmt);
+    DCHECK(false);
+    return false;
+  }
+
+  if (mysql_stmt_execute(stmt)) {
+    LOG(ERROR) << "mysql_stmt_execute(), 1 failed";
+    LOG(ERROR) << " " << mysql_stmt_error(stmt);
+    DCHECK(false);
+    return false;
+  }
+
+  mysql_stmt_free_result(stmt);
+
   return true;
 }
 
@@ -216,6 +278,31 @@ bool LazyInitializeStatements() {
     return false;
   }
 
+  get_lock_stmt = mysql_stmt_init(conn);
+  if (!get_lock_stmt) {
+    LOG(ERROR) << "mysql_stmt_init(), out of memory";
+    return false;
+  }
+
+  if (mysql_stmt_prepare(get_lock_stmt, stmt_get_lock, strlen(stmt_get_lock))) {
+    LOG(ERROR) << "mysql_stmt_prepare(), SELECT failed";
+    LOG(ERROR) << " " << mysql_stmt_error(get_lock_stmt);
+    return false;
+  }
+
+  release_lock_stmt = mysql_stmt_init(conn);
+  if (!release_lock_stmt) {
+    LOG(ERROR) << "mysql_stmt_init(), out of memory";
+    return false;
+  }
+
+  if (mysql_stmt_prepare(release_lock_stmt, stmt_release_lock,
+                         strlen(stmt_release_lock))) {
+    LOG(ERROR) << "mysql_stmt_prepare(), SELECT failed";
+    LOG(ERROR) << " " << mysql_stmt_error(release_lock_stmt);
+    return false;
+  }
+
   return true;
 }
 
@@ -227,153 +314,6 @@ bool LazyInit() {
   if (!LazyInitializeStatements()) {
     return false;
   }
-
-  return true;
-}
-
-bool ReadCustomer(const int id, Customer *customer, int *version) {
-  DLOG(INFO) << "Reading customer " << id;
-
-  MYSQL_BIND params_bind[1];
-  memset(params_bind, 0, sizeof(params_bind));
-
-  // ID
-  params_bind[0].buffer_type = MYSQL_TYPE_LONG;
-  params_bind[0].buffer =
-      const_cast<char *>(reinterpret_cast<const char *>(&id));
-  params_bind[0].is_null = 0;
-  params_bind[0].length = 0;
-
-  if (mysql_stmt_bind_param(select_stmt, params_bind)) {
-    LOG(ERROR) << "mysql_stmt_bind_param() failed";
-    LOG(ERROR) << " " << mysql_stmt_error(select_stmt);
-    return false;
-  }
-
-  if (mysql_stmt_execute(select_stmt)) {
-    LOG(ERROR) << "mysql_stmt_execute(), 1 failed";
-    LOG(ERROR) << " " << mysql_stmt_error(select_stmt);
-    return false;
-  }
-
-  unsigned char blob_buffer[sizeof(
-      Customer)]; // Adjust the buffer size according to your needs
-  my_bool is_null[2];
-  my_bool error[2];
-  unsigned long length[2];
-
-  MYSQL_BIND results_bind[2];
-  memset(results_bind, 0, sizeof(results_bind));
-
-  // data
-  results_bind[0].buffer_type = MYSQL_TYPE_BLOB;
-  results_bind[0].buffer = blob_buffer;
-  results_bind[0].buffer_length = sizeof(blob_buffer);
-  results_bind[0].is_null = &is_null[0];
-  results_bind[0].length = &length[0];
-  results_bind[0].error = &error[0];
-
-  // version
-  results_bind[1].buffer_type = MYSQL_TYPE_LONG;
-  results_bind[1].buffer =
-      const_cast<char *>(reinterpret_cast<const char *>(version));
-  results_bind[1].buffer_length = sizeof(*version);
-  results_bind[1].is_null = &is_null[1];
-  results_bind[1].length = &length[1];
-  results_bind[1].error = &error[1];
-
-  if (mysql_stmt_bind_result(select_stmt, results_bind)) {
-    LOG(ERROR) << "mysql_stmt_execute(), 1 failed";
-    LOG(ERROR) << " " << mysql_stmt_error(select_stmt);
-    mysql_stmt_free_result(select_stmt);
-    return false;
-  }
-
-  int rc = mysql_stmt_fetch(select_stmt);
-  if (rc != 0) {
-    LOG(ERROR) << "mysql_stmt_fetch(), 1 failed: "
-               << mysql_stmt_error(select_stmt) << " "
-               << mysql_stmt_errno(select_stmt) << " " << rc;
-    mysql_stmt_free_result(select_stmt);
-    return false;
-  }
-
-  *customer = std::move(*reinterpret_cast<Customer *>(blob_buffer));
-  mysql_stmt_free_result(select_stmt);
-
-  return true;
-}
-
-bool ReadCustomerForUpdate(const int id, Customer *customer, int *version) {
-  DLOG(INFO) << "Reading customer " << id;
-
-  thread_local MYSQL_STMT *stmt = select_for_update_stmt;
-
-  MYSQL_BIND params_bind[1];
-  memset(params_bind, 0, sizeof(params_bind));
-
-  // ID
-  params_bind[0].buffer_type = MYSQL_TYPE_LONG;
-  params_bind[0].buffer =
-      const_cast<char *>(reinterpret_cast<const char *>(&id));
-  params_bind[0].is_null = 0;
-  params_bind[0].length = 0;
-
-  if (mysql_stmt_bind_param(stmt, params_bind)) {
-    LOG(ERROR) << "mysql_stmt_bind_param() failed";
-    LOG(ERROR) << " " << mysql_stmt_error(stmt);
-    return false;
-  }
-
-  if (mysql_stmt_execute(stmt)) {
-    LOG(ERROR) << "mysql_stmt_execute(), 1 failed";
-    LOG(ERROR) << " " << mysql_stmt_error(stmt);
-    return false;
-  }
-
-  unsigned char blob_buffer[sizeof(
-      Customer)]; // Adjust the buffer size according to your needs
-  my_bool is_null[2];
-  my_bool error[2];
-  unsigned long length[2];
-
-  MYSQL_BIND results_bind[2];
-  memset(results_bind, 0, sizeof(results_bind));
-
-  // data
-  results_bind[0].buffer_type = MYSQL_TYPE_BLOB;
-  results_bind[0].buffer = blob_buffer;
-  results_bind[0].buffer_length = sizeof(blob_buffer);
-  results_bind[0].is_null = &is_null[0];
-  results_bind[0].length = &length[0];
-  results_bind[0].error = &error[0];
-
-  // version
-  results_bind[1].buffer_type = MYSQL_TYPE_LONG;
-  results_bind[1].buffer =
-      const_cast<char *>(reinterpret_cast<const char *>(version));
-  results_bind[1].buffer_length = sizeof(*version);
-  results_bind[1].is_null = &is_null[1];
-  results_bind[1].length = &length[1];
-  results_bind[1].error = &error[1];
-
-  if (mysql_stmt_bind_result(stmt, results_bind)) {
-    LOG(ERROR) << "mysql_stmt_execute(), 1 failed";
-    LOG(ERROR) << " " << mysql_stmt_error(stmt);
-    mysql_stmt_free_result(stmt);
-    return false;
-  }
-
-  int rc = mysql_stmt_fetch(stmt);
-  if (rc != 0) {
-    LOG(ERROR) << "mysql_stmt_fetch(), 1 failed: " << mysql_stmt_error(stmt)
-               << " " << mysql_stmt_errno(stmt) << " " << rc;
-    mysql_stmt_free_result(stmt);
-    return false;
-  }
-
-  *customer = std::move(*reinterpret_cast<Customer *>(blob_buffer));
-  mysql_stmt_free_result(stmt);
 
   return true;
 }
@@ -412,8 +352,7 @@ bool MariaDbGetCustomer(int id, Customer *customer) {
   }
   id--;
 
-  int version;
-  if (!ReadCustomer(id, customer, &version)) {
+  if (!ReadCustomerHs(id, customer)) {
     LOG(ERROR) << "Failed to read customer";
     return false;
   }
@@ -430,24 +369,18 @@ TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
 
   bool success = false;
   customer_write_mutexs[id].Lock();
+  DCHECK(GetLock(id));
   while (!success) {
-    int version;
-
     DLOG(INFO) << "Starting transaction for customer " << id;
-    if (mysql_query(conn, "START TRANSACTION")) {
-      LOG(ERROR) << "Failed to start transaction: " << mysql_error(conn);
-      continue;
-    }
 
-    if (!ReadCustomerForUpdate(id, customer, &version)) {
+    if (!ReadCustomerHs(id, customer)) {
       LOG(ERROR) << "Failed to read customer";
-      mysql_rollback(conn);
       continue;
     }
 
     if (customer->balance + transaction.value < -customer->limit) {
+      DCHECK(ReleaseLock(id));
       customer_write_mutexs[id].Unlock();
-      mysql_rollback(conn);
       return TransactionResult::LIMIT_EXCEEDED;
     }
 
@@ -460,17 +393,12 @@ TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
       customer->transaction_count++;
     }
 
-    if (!InsertCustomer(*customer, id)) {
+    if (!WriteCustomerHs(id, *customer)) {
       DLOG(ERROR) << "Failed to insert customer" << std::endl;
-      mysql_rollback(conn);
       continue;
     }
 
-    if (mysql_commit(conn)) {
-      LOG(ERROR) << "Failed to commit transaction: " << mysql_error(conn);
-      mysql_rollback(conn);
-      continue;
-    }
+    DCHECK(ReleaseLock(id));
     customer_write_mutexs[id].Unlock();
     success = true;
   }

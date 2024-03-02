@@ -4,7 +4,8 @@
 #include "rinha/structs.h"
 
 namespace rinha {
-void InitializeThreadPool(size_t num_threads);
+void InitializeThreadPool(size_t num_threads,
+                          absl::string_view handler_socket_hostname);
 void EnqueueProcessRequest(ProcessRequestParams &&f);
 } // namespace rinha
 

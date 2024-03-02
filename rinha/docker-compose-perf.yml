@@ -22,7 +22,6 @@ services:
       - /var/run/mysqld:/var/run/mysqld
       - /tmp:/tmp
     ports:
-        # Obrigatório expor/usar a porta 9999 no load balancer!
       - "10019:10019"
       - "10020:10020"
     deploy:

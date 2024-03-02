@@ -100,7 +100,7 @@ cc_library(
         "@mariadb-connector-c//:mariadb-connector-c",
         ":structs",
         ":to_json",
-        "//libhsclient:hslongrun"
+        ":handler_socket",
     ]
 )
 
@@ -113,6 +113,7 @@ cc_library(
         "@glog//:glog",
         ":request_processor",
         ":maria_database",
+        ":handler_socket",
 ])
 
 cc_library(
@@ -147,4 +148,28 @@ cc_library(
         ":from_http",
         ":structs"
     ]
+)
+
+cc_library(
+    name = "handler_socket",
+    hdrs = ["handler_socket.h"],
+    srcs = ["handler_socket.cc"],
+    deps = [
+        "@abseil//:abseil",
+        "@glog//:glog",
+        "//libhsclient:hstcpcli",
+        ":structs",
+    ],
+    copts = ["-Wno-deprecated-declarations"],
+)
+
+cc_library(
+    name = "shared_lock",
+    hdrs = ["shared_lock.h"],
+    srcs = ["shared_lock.cc"],
+    deps = [
+        "@abseil//:abseil",
+        "@glog//:glog",
+    ],
+    copts = ["-Wno-deprecated-declarations"],
 )
