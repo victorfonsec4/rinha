@@ -17,7 +17,9 @@
 
 #define MAX_EVENTS 10
 #define BUFFER_SIZE 4096
-constexpr char kSocketPath[] = "/tmp/unix_socket_example.sock";
+constexpr char kSocketPath1[] = "/tmp/unix_socket_example.sock";
+constexpr char kSocketPath2[] = "/tmp/unix_socket_example2.sock";
+int socket_to_use = 0;
 absl::flat_hash_map<int, int> tcp_to_unix;
 absl::flat_hash_map<int, int> unix_to_tcp;
 
@@ -62,7 +64,9 @@ int make_socket_non_blocking(int fd) {
 }
 
 int create_unix_socket_connection() {
-  DLOG(INFO) << "Creating new connection to socket " << kSocketPath;
+  const char *socket_path = socket_to_use % 2 ? kSocketPath1 : kSocketPath2;
+  socket_to_use++;
+  DLOG(INFO) << "Creating new connection to socket " << socket_path;
   int sock_fd;
   struct sockaddr_un server_addr;
 
@@ -79,7 +83,7 @@ int create_unix_socket_connection() {
 
   // Specify the socket family and path
   server_addr.sun_family = AF_UNIX;
-  strncpy(server_addr.sun_path, kSocketPath, sizeof(server_addr.sun_path) - 1);
+  strncpy(server_addr.sun_path, socket_path, sizeof(server_addr.sun_path) - 1);
 
   // Connect to the server
   if (connect(sock_fd, (struct sockaddr *)&server_addr,
