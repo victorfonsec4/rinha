@@ -1,10 +1,9 @@
 version: "3.5"
 
 services:
-  nginx:
-    image: vifonsec/nginx:latest
+  router:
+    image: vifonsec/router:latest
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - /tmp:/tmp
     ports:
         # Obrigatório expor/usar a porta 9999 no load balancer!
@@ -21,12 +20,9 @@ services:
     volumes:
       - /var/run/mysqld:/var/run/mysqld
       - /tmp:/tmp
-    ports:
-      - "10019:10019"
-      - "10020:10020"
     deploy:
       resources:
         limits:
           cpus: "0.2"
-          memory: "150MB"
+          memory: "350MB"
     network_mode: "host"

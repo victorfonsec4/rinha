@@ -34,6 +34,16 @@ cc_binary(
     ]
 )
 
+cc_binary(
+    name = "router",
+    srcs = ["router.cc"],
+    deps = [
+        "@abseil//:abseil",
+        "@glog//:glog",
+        ":thread_pool_router",
+    ]
+)
+
 cc_library(
     name = "structs",
     srcs = ["structs.h"],
@@ -124,6 +134,17 @@ cc_library(
         "@abseil//:abseil",
         "@glog//:glog",
     ])
+
+
+cc_library(
+    name = "thread_pool_router",
+    hdrs = ["thread_pool_router.h"],
+    srcs = ["thread_pool_router.cc"],
+    deps = [
+        "@abseil//:abseil",
+        "@glog//:glog",
+    ])
+
 
 
 
