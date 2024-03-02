@@ -1,4 +1,3 @@
-
 // vim:sw=2:ai
 
 /*
@@ -6,31 +5,27 @@
  * See COPYRIGHT.txt for details.
  */
 
-#include <stdexcept>
-#include <string.h>
 #include <errno.h>
-#include <unistd.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <stdexcept>
+#include <string.h>
 #include <sys/un.h>
+#include <unistd.h>
 
-#include "socket.hpp"
-#include "string_util.hpp"
-#include "fatal.hpp"
+#include "libhsclient/fatal.hpp"
+#include "libhsclient/socket.hpp"
+#include "libhsclient/string_util.hpp"
 
 namespace dena {
 
-void
-ignore_sigpipe()
-{
+void ignore_sigpipe() {
   if (signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
     fatal_abort("SIGPIPE SIG_IGN");
   }
 }
 
-void
-socket_args::set(const config& conf)
-{
+void socket_args::set(const config &conf) {
   timeout = conf.get_int("timeout", 600);
   listen_backlog = conf.get_int("listen_backlog", 256);
   std::string node = conf.get_str("host", "");
@@ -41,7 +36,7 @@ socket_args::set(const config& conf)
     } else {
       const char *nd = node.empty() ? 0 : node.c_str();
       if (resolve(nd, port.c_str()) != 0) {
-	fatal_exit("getaddrinfo failed: " + node + ":" + port);
+        fatal_exit("getaddrinfo failed: " + node + ":" + port);
       }
     }
   }
@@ -49,10 +44,8 @@ socket_args::set(const config& conf)
   rcvbuf = conf.get_int("rcvbuf", 0);
 }
 
-void
-socket_args::set_unix_domain(const char *path)
-{
-  family = AF_UNIX; 
+void socket_args::set_unix_domain(const char *path) {
+  family = AF_UNIX;
   addr = sockaddr_storage();
   addrlen = sizeof(sockaddr_un);
   sockaddr_un *const ap = reinterpret_cast<sockaddr_un *>(&addr);
@@ -60,9 +53,7 @@ socket_args::set_unix_domain(const char *path)
   strncpy(ap->sun_path, path, sizeof(ap->sun_path) - 1);
 }
 
-int
-socket_args::resolve(const char *node, const char *service)
-{
+int socket_args::resolve(const char *node, const char *service) {
   const int flags = (node == 0) ? AI_PASSIVE : 0;
   auto_addrinfo ai;
   addr = sockaddr_storage();
@@ -76,9 +67,8 @@ socket_args::resolve(const char *node, const char *service)
   return 0;
 }
 
-int
-socket_set_options(auto_file& fd, const socket_args& args, std::string& err_r)
-{
+int socket_set_options(auto_file &fd, const socket_args &args,
+                       std::string &err_r) {
   if (args.timeout != 0 && !args.nonblocking) {
     struct timeval tv;
     tv.tv_sec = args.timeout;
@@ -110,9 +100,7 @@ socket_set_options(auto_file& fd, const socket_args& args, std::string& err_r)
   return 0;
 }
 
-int
-socket_open(auto_file& fd, const socket_args& args, std::string& err_r)
-{
+int socket_open(auto_file &fd, const socket_args &args, std::string &err_r) {
   fd.reset(socket(args.family, args.socktype, args.protocol));
   if (fd.get() < 0) {
     return errno_string("socket", errno, err_r);
@@ -120,15 +108,13 @@ socket_open(auto_file& fd, const socket_args& args, std::string& err_r)
   return socket_set_options(fd, args, err_r);
 }
 
-int
-socket_connect(auto_file& fd, const socket_args& args, std::string& err_r)
-{
+int socket_connect(auto_file &fd, const socket_args &args, std::string &err_r) {
   int r = 0;
   if ((r = socket_open(fd, args, err_r)) != 0) {
     return r;
   }
   if (connect(fd.get(), reinterpret_cast<const sockaddr *>(&args.addr),
-    args.addrlen) != 0) {
+              args.addrlen) != 0) {
     if (!args.nonblocking || errno != EINPROGRESS) {
       return errno_string("connect", errno, err_r);
     }
@@ -136,9 +122,7 @@ socket_connect(auto_file& fd, const socket_args& args, std::string& err_r)
   return 0;
 }
 
-int
-socket_bind(auto_file& fd, const socket_args& args, std::string& err_r)
-{
+int socket_bind(auto_file &fd, const socket_args &args, std::string &err_r) {
   fd.reset(socket(args.family, args.socktype, args.protocol));
   if (fd.get() < 0) {
     return errno_string("socket", errno, err_r);
@@ -146,19 +130,19 @@ socket_bind(auto_file& fd, const socket_args& args, std::string& err_r)
   if (args.reuseaddr) {
     if (args.family == AF_UNIX) {
       const sockaddr_un *const ap =
-	reinterpret_cast<const sockaddr_un *>(&args.addr);
+          reinterpret_cast<const sockaddr_un *>(&args.addr);
       if (unlink(ap->sun_path) != 0 && errno != ENOENT) {
-	return errno_string("unlink uds", errno, err_r);
+        return errno_string("unlink uds", errno, err_r);
       }
     } else {
       int v = 1;
       if (setsockopt(fd.get(), SOL_SOCKET, SO_REUSEADDR, &v, sizeof(v)) != 0) {
-	return errno_string("setsockopt SO_REUSEADDR", errno, err_r);
+        return errno_string("setsockopt SO_REUSEADDR", errno, err_r);
       }
     }
   }
   if (bind(fd.get(), reinterpret_cast<const sockaddr *>(&args.addr),
-    args.addrlen) != 0) {
+           args.addrlen) != 0) {
     return errno_string("bind", errno, err_r);
   }
   if (listen(fd.get(), args.listen_backlog) != 0) {
@@ -170,17 +154,15 @@ socket_bind(auto_file& fd, const socket_args& args, std::string& err_r)
   return 0;
 }
 
-int
-socket_accept(int listen_fd, auto_file& fd, const socket_args& args,
-  sockaddr_storage& addr_r, size_socket& addrlen_r, std::string& err_r)
-{
-  fd.reset(accept(listen_fd, reinterpret_cast<sockaddr *>(&addr_r),
-    &addrlen_r));
+int socket_accept(int listen_fd, auto_file &fd, const socket_args &args,
+                  sockaddr_storage &addr_r, size_socket &addrlen_r,
+                  std::string &err_r) {
+  fd.reset(
+      accept(listen_fd, reinterpret_cast<sockaddr *>(&addr_r), &addrlen_r));
   if (fd.get() < 0) {
     return errno_string("accept", errno, err_r);
   }
   return socket_set_options(fd, args, err_r);
 }
 
-};
-
+}; // namespace dena

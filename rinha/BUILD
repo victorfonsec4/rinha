@@ -23,6 +23,16 @@ cc_binary(
     ]
 )
 
+cc_binary(
+    name = "test_hslongrun",
+    srcs = ["test_hslongrun.cc"],
+    deps = [
+        "@abseil//:abseil",
+        "@glog//:glog",
+        "//libhsclient:hstcpcli"
+    ]
+)
+
 cc_library(
     name = "structs",
     srcs = ["structs.h"],
@@ -89,6 +99,7 @@ cc_library(
         "@mariadb-connector-c//:mariadb-connector-c",
         ":structs",
         ":to_json",
+        "//libhsclient:hslongrun"
     ]
 )
 

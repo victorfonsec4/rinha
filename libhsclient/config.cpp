@@ -1,4 +1,3 @@
-
 // vim:sw=2:ai
 
 /*
@@ -6,37 +5,34 @@
  * See COPYRIGHT.txt for details.
  */
 
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-#include "config.hpp"
+#include "libhsclient/config.hpp"
 
 namespace dena {
 
 unsigned int verbose_level = 0;
 
-std::string
-config::get_str(const std::string& key, const std::string& def) const
-{
+std::string config::get_str(const std::string &key,
+                            const std::string &def) const {
   const_iterator iter = this->find(key);
   if (iter == this->end()) {
     DENA_VERBOSE(10, fprintf(stderr, "CONFIG: %s=%s(default)\n", key.c_str(),
-      def.c_str()));
+                             def.c_str()));
     return def;
   }
   DENA_VERBOSE(10, fprintf(stderr, "CONFIG: %s=%s\n", key.c_str(),
-    iter->second.c_str()));
+                           iter->second.c_str()));
   return iter->second;
 }
 
-long long
-config::get_int(const std::string& key, long long def) const
-{
+long long config::get_int(const std::string &key, long long def) const {
   const_iterator iter = this->find(key);
   if (iter == this->end()) {
-    DENA_VERBOSE(10, fprintf(stderr, "CONFIG: %s=%lld(default)\n", key.c_str(),
-      def));
+    DENA_VERBOSE(
+        10, fprintf(stderr, "CONFIG: %s=%lld(default)\n", key.c_str(), def));
     return def;
   }
   const long long r = atoll(iter->second.c_str());
@@ -44,9 +40,7 @@ config::get_int(const std::string& key, long long def) const
   return r;
 }
 
-void
-parse_args(int argc, char **argv, config& conf)
-{
+void parse_args(int argc, char **argv, config &conf) {
   for (int i = 1; i < argc; ++i) {
     const char *const arg = argv[i];
     const char *const eq = strchr(arg, '=');
@@ -63,5 +57,4 @@ parse_args(int argc, char **argv, config& conf)
   }
 }
 
-};
-
+}; // namespace dena

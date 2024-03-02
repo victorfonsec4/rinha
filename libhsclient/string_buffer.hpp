@@ -1,4 +1,3 @@
-
 // vim:sw=2:ai
 
 /*
@@ -9,39 +8,25 @@
 #ifndef DENA_STRING_BUFFER_HPP
 #define DENA_STRING_BUFFER_HPP
 
-#include <vector>
 #include <stdlib.h>
 #include <string.h>
+#include <vector>
 
-#include "util.hpp"
-#include "allocator.hpp"
-#include "fatal.hpp"
+#include "libhsclient/allocator.hpp"
+#include "libhsclient/fatal.hpp"
+#include "libhsclient/util.hpp"
 
 namespace dena {
 
 struct string_buffer : private noncopyable {
-  string_buffer() : buffer(0), begin_offset(0), end_offset(0), alloc_size(0) { }
-  ~string_buffer() {
-    DENA_FREE(buffer);
-  }
-  const char *begin() const {
-    return buffer + begin_offset;
-  }
-  const char *end() const {
-    return buffer + end_offset;
-  }
-  char *begin() {
-    return buffer + begin_offset;
-  }
-  char *end() {
-    return buffer + end_offset;
-  }
-  size_t size() const {
-    return end_offset - begin_offset;
-  }
-  void clear() {
-    begin_offset = end_offset = 0;
-  }
+  string_buffer() : buffer(0), begin_offset(0), end_offset(0), alloc_size(0) {}
+  ~string_buffer() { DENA_FREE(buffer); }
+  const char *begin() const { return buffer + begin_offset; }
+  const char *end() const { return buffer + end_offset; }
+  char *begin() { return buffer + begin_offset; }
+  char *end() { return buffer + end_offset; }
+  size_t size() const { return end_offset - begin_offset; }
+  void clear() { begin_offset = end_offset = 0; }
   void resize(size_t len) {
     if (size() < len) {
       reserve(len);
@@ -56,11 +41,11 @@ struct string_buffer : private noncopyable {
     size_t asz = alloc_size;
     while (asz < begin_offset + len) {
       if (asz == 0) {
-	asz = 16;
+        asz = 16;
       }
       const size_t asz_n = asz << 1;
       if (asz_n < asz) {
-	fatal_abort("string_buffer::resize() overflow");
+        fatal_abort("string_buffer::resize() overflow");
       }
       asz = asz_n;
     }
@@ -86,8 +71,7 @@ struct string_buffer : private noncopyable {
     len = std::min(len, alloc_size - end_offset);
     end_offset += len;
   }
-  template <size_t N>
-  void append_literal(const char (& str)[N]) {
+  template <size_t N> void append_literal(const char (&str)[N]) {
     append(str, str + N - 1);
   }
   void append(const char *start, const char *finish) {
@@ -97,7 +81,7 @@ struct string_buffer : private noncopyable {
     end_offset += len;
   }
   void append_2(const char *s1, const char *f1, const char *s2,
-    const char *f2) {
+                const char *f2) {
     const size_t l1 = f1 - s1;
     const size_t l2 = f2 - s2;
     reserve(end_offset + l1 + l2);
@@ -105,14 +89,14 @@ struct string_buffer : private noncopyable {
     memcpy(buffer + end_offset + l1, s2, l2);
     end_offset += l1 + l2;
   }
- private:
+
+private:
   char *buffer;
   size_t begin_offset;
   size_t end_offset;
   size_t alloc_size;
 };
 
-};
+}; // namespace dena
 
 #endif
-

@@ -1,4 +1,3 @@
-
 // vim:sw=2:ai
 
 /*
@@ -9,23 +8,21 @@
 #ifndef DENA_THREAD_HPP
 #define DENA_THREAD_HPP
 
-#include <stdexcept>
 #include <pthread.h>
+#include <stdexcept>
 
-#include "fatal.hpp"
+#include "libhsclient/fatal.hpp"
 
 namespace dena {
 
-template <typename T>
-struct thread : private noncopyable {
-  template <typename Ta> thread(const Ta& arg, size_t stack_sz = 256 * 1024)
-    : obj(arg), thr(0), need_join(false), stack_size(stack_sz) { }
-  template <typename Ta0, typename Ta1> thread(const Ta0& a0,
-    volatile Ta1& a1, size_t stack_sz = 256 * 1024)
-    : obj(a0, a1), thr(0), need_join(false), stack_size(stack_sz) { }
-  ~thread() {
-    join();
-  }
+template <typename T> struct thread : private noncopyable {
+  template <typename Ta>
+  thread(const Ta &arg, size_t stack_sz = 256 * 1024)
+      : obj(arg), thr(0), need_join(false), stack_size(stack_sz) {}
+  template <typename Ta0, typename Ta1>
+  thread(const Ta0 &a0, volatile Ta1 &a1, size_t stack_sz = 256 * 1024)
+      : obj(a0, a1), thr(0), need_join(false), stack_size(stack_sz) {}
+  ~thread() { join(); }
   void start() {
     if (!start_nothrow()) {
       fatal_abort("thread::start");
@@ -63,22 +60,23 @@ struct thread : private noncopyable {
     }
     need_join = false;
   }
-  T& operator *() { return obj; }
-  T *operator ->() { return &obj; }
- private:
+  T &operator*() { return obj; }
+  T *operator->() { return &obj; }
+
+private:
   static void *thread_main(void *arg) {
     thread *p = static_cast<thread *>(arg);
     p->obj();
     return 0;
   }
- private:
+
+private:
   T obj;
   pthread_t thr;
   bool need_join;
   size_t stack_size;
 };
 
-};
+}; // namespace dena
 
 #endif
-

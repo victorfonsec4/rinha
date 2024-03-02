@@ -1,4 +1,3 @@
-
 // vim:sw=2:ai
 
 /*
@@ -12,8 +11,8 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-#include "fatal.hpp"
-#include "util.hpp"
+#include "libhsclient/fatal.hpp"
+#include "libhsclient/util.hpp"
 
 namespace dena {
 
@@ -41,11 +40,11 @@ struct mutex : private noncopyable {
       fatal_abort("pthread_mutex_unlock");
     }
   }
- private:
+
+private:
   mutable pthread_mutex_t mtx;
 };
 
-};
+}; // namespace dena
 
 #endif
-

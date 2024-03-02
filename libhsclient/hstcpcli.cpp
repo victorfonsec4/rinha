@@ -1,4 +1,3 @@
-
 // vim:sw=2:ai
 
 /*
@@ -8,12 +7,12 @@
 
 #include <stdexcept>
 
-#include "hstcpcli.hpp"
-#include "auto_file.hpp"
-#include "string_util.hpp"
-#include "auto_addrinfo.hpp"
-#include "escape.hpp"
-#include "util.hpp"
+#include "libhsclient/auto_addrinfo.hpp"
+#include "libhsclient/auto_file.hpp"
+#include "libhsclient/escape.hpp"
+#include "libhsclient/hstcpcli.hpp"
+#include "libhsclient/string_util.hpp"
+#include "libhsclient/util.hpp"
 
 /* TODO */
 #if !defined(__linux__) && !defined(__FreeBSD__) && !defined(MSG_NOSIGNAL)
@@ -25,29 +24,33 @@
 namespace dena {
 
 struct hstcpcli : public hstcpcli_i, private noncopyable {
-  hstcpcli(const socket_args& args);
+  hstcpcli(const socket_args &args);
   virtual void close();
   virtual int reconnect();
   virtual bool stable_point();
   virtual void request_buf_open_index(size_t pst_id, const char *dbn,
-    const char *tbl, const char *idx, const char *retflds, const char *filflds);
+                                      const char *tbl, const char *idx,
+                                      const char *retflds, const char *filflds);
   virtual void request_buf_auth(const char *secret, const char *typ);
-  virtual void request_buf_exec_generic(size_t pst_id, const string_ref& op,
-    const string_ref *kvs, size_t kvslen, uint32_t limit, uint32_t skip,
-    const string_ref& mod_op, const string_ref *mvs, size_t mvslen,
-    const hstcpcli_filter *fils, size_t filslen, int invalues_keypart,
-    const string_ref *invalues, size_t invalueslen);
+  virtual void request_buf_exec_generic(
+      size_t pst_id, const string_ref &op, const string_ref *kvs, size_t kvslen,
+      uint32_t limit, uint32_t skip, const string_ref &mod_op,
+      const string_ref *mvs, size_t mvslen, const hstcpcli_filter *fils,
+      size_t filslen, int invalues_keypart, const string_ref *invalues,
+      size_t invalueslen);
   virtual int request_send();
-  virtual int response_recv(size_t& num_flds_r);
+  virtual int response_recv(size_t &num_flds_r);
   virtual const string_ref *get_next_row();
   virtual void response_buf_remove();
   virtual int get_error_code();
   virtual std::string get_error();
- private:
+
+private:
   int read_more();
   void clear_error();
-  int set_error(int code, const std::string& str);
- private:
+  int set_error(int code, const std::string &str);
+
+private:
   auto_file fd;
   socket_args sargs;
   string_buffer readbuf;
@@ -63,19 +66,16 @@ struct hstcpcli : public hstcpcli_i, private noncopyable {
   std::vector<string_ref> flds;
 };
 
-hstcpcli::hstcpcli(const socket_args& args)
-  : sargs(args), response_end_offset(0), cur_row_offset(0), num_flds(0),
-    num_req_bufd(0), num_req_sent(0), num_req_rcvd(0), error_code(0)
-{
+hstcpcli::hstcpcli(const socket_args &args)
+    : sargs(args), response_end_offset(0), cur_row_offset(0), num_flds(0),
+      num_req_bufd(0), num_req_sent(0), num_req_rcvd(0), error_code(0) {
   std::string err;
   if (socket_connect(fd, sargs, err) != 0) {
     set_error(-1, err);
   }
 }
 
-void
-hstcpcli::close()
-{
+void hstcpcli::close() {
   fd.close();
   readbuf.clear();
   writebuf.clear();
@@ -88,9 +88,7 @@ hstcpcli::close()
   num_req_rcvd = 0;
 }
 
-int
-hstcpcli::reconnect()
-{
+int hstcpcli::reconnect() {
   clear_error();
   close();
   std::string err;
@@ -100,29 +98,17 @@ hstcpcli::reconnect()
   return error_code;
 }
 
-bool
-hstcpcli::stable_point()
-{
+bool hstcpcli::stable_point() {
   /* returns true if cli can send a new request */
   return fd.get() >= 0 && num_req_bufd == 0 && num_req_sent == 0 &&
-    num_req_rcvd == 0 && response_end_offset == 0;
+         num_req_rcvd == 0 && response_end_offset == 0;
 }
 
-int
-hstcpcli::get_error_code()
-{
-  return error_code;
-}
+int hstcpcli::get_error_code() { return error_code; }
 
-std::string
-hstcpcli::get_error()
-{
-  return error_str;
-}
+std::string hstcpcli::get_error() { return error_str; }
 
-int
-hstcpcli::read_more()
-{
+int hstcpcli::read_more() {
   const size_t block_size = 4096; // FIXME
   char *const wp = readbuf.make_space(block_size);
   const ssize_t rlen = read(fd.get(), wp, block_size);
@@ -138,27 +124,23 @@ hstcpcli::read_more()
   return rlen;
 }
 
-void
-hstcpcli::clear_error()
-{
+void hstcpcli::clear_error() {
   DBG(fprintf(stderr, "CLEAR_ERROR: %d\n", error_code));
   error_code = 0;
   error_str.clear();
 }
 
-int
-hstcpcli::set_error(int code, const std::string& str)
-{
+int hstcpcli::set_error(int code, const std::string &str) {
   DBG(fprintf(stderr, "SET_ERROR: %d\n", code));
   error_code = code;
   error_str = str;
   return error_code;
 }
 
-void
-hstcpcli::request_buf_open_index(size_t pst_id, const char *dbn,
-  const char *tbl, const char *idx, const char *retflds, const char *filflds)
-{
+void hstcpcli::request_buf_open_index(size_t pst_id, const char *dbn,
+                                      const char *tbl, const char *idx,
+                                      const char *retflds,
+                                      const char *filflds) {
   if (num_req_sent > 0 || num_req_rcvd > 0) {
     close();
     set_error(-1, "request_buf_open_index: protocol out of sync");
@@ -187,9 +169,7 @@ hstcpcli::request_buf_open_index(size_t pst_id, const char *dbn,
   ++num_req_bufd;
 }
 
-void
-hstcpcli::request_buf_auth(const char *secret, const char *typ)
-{
+void hstcpcli::request_buf_auth(const char *secret, const char *typ) {
   if (num_req_sent > 0 || num_req_rcvd > 0) {
     close();
     set_error(-1, "request_buf_auth: protocol out of sync");
@@ -210,9 +190,8 @@ hstcpcli::request_buf_auth(const char *secret, const char *typ)
 
 namespace {
 
-void
-append_delim_value(string_buffer& buf, const char *start, const char *finish)
-{
+void append_delim_value(string_buffer &buf, const char *start,
+                        const char *finish) {
   if (start == 0) {
     /* null */
     const char t[] = "\t\0";
@@ -224,15 +203,14 @@ append_delim_value(string_buffer& buf, const char *start, const char *finish)
   }
 }
 
-};
+}; // namespace
 
-void
-hstcpcli::request_buf_exec_generic(size_t pst_id, const string_ref& op,
-  const string_ref *kvs, size_t kvslen, uint32_t limit, uint32_t skip,
-  const string_ref& mod_op, const string_ref *mvs, size_t mvslen,
-  const hstcpcli_filter *fils, size_t filslen, int invalues_keypart,
-  const string_ref *invalues, size_t invalueslen)
-{
+void hstcpcli::request_buf_exec_generic(
+    size_t pst_id, const string_ref &op, const string_ref *kvs, size_t kvslen,
+    uint32_t limit, uint32_t skip, const string_ref &mod_op,
+    const string_ref *mvs, size_t mvslen, const hstcpcli_filter *fils,
+    size_t filslen, int invalues_keypart, const string_ref *invalues,
+    size_t invalueslen) {
   if (num_req_sent > 0 || num_req_rcvd > 0) {
     close();
     set_error(-1, "request_buf_exec_generic: protocol out of sync");
@@ -244,16 +222,18 @@ hstcpcli::request_buf_exec_generic(size_t pst_id, const string_ref& op,
   writebuf.append_literal("\t");
   append_uint32(writebuf, kvslen); // FIXME size_t ?
   for (size_t i = 0; i < kvslen; ++i) {
-    const string_ref& kv = kvs[i];
+    printf("ARG: kvs[%zu]: %s\n", i, kvs[i].begin());
+    const string_ref &kv = kvs[i];
     append_delim_value(writebuf, kv.begin(), kv.end());
   }
-  if (limit != 0 || skip != 0 || invalues_keypart >= 0 ||
-    mod_op.size() != 0 || filslen != 0) {
+  if (limit != 0 || skip != 0 || invalues_keypart >= 0 || mod_op.size() != 0 ||
+      filslen != 0) {
+    printf("MORE ARGS");
     /* has more option */
     writebuf.append_literal("\t");
     append_uint32(writebuf, limit); // FIXME size_t ?
-    if (skip != 0 || invalues_keypart >= 0 ||
-      mod_op.size() != 0 || filslen != 0) {
+    if (skip != 0 || invalues_keypart >= 0 || mod_op.size() != 0 ||
+        filslen != 0) {
       writebuf.append_literal("\t");
       append_uint32(writebuf, skip); // FIXME size_t ?
     }
@@ -263,12 +243,12 @@ hstcpcli::request_buf_exec_generic(size_t pst_id, const string_ref& op,
       writebuf.append_literal("\t");
       append_uint32(writebuf, invalueslen);
       for (size_t i = 0; i < invalueslen; ++i) {
-	const string_ref& s = invalues[i];
-	append_delim_value(writebuf, s.begin(), s.end());
+        const string_ref &s = invalues[i];
+        append_delim_value(writebuf, s.begin(), s.end());
       }
     }
     for (size_t i = 0; i < filslen; ++i) {
-      const hstcpcli_filter& f = fils[i];
+      const hstcpcli_filter &f = fils[i];
       writebuf.append_literal("\t");
       writebuf.append(f.filter_type.begin(), f.filter_type.end());
       writebuf.append_literal("\t");
@@ -281,18 +261,17 @@ hstcpcli::request_buf_exec_generic(size_t pst_id, const string_ref& op,
       writebuf.append_literal("\t");
       writebuf.append(mod_op.begin(), mod_op.end());
       for (size_t i = 0; i < mvslen; ++i) {
-	const string_ref& mv = mvs[i];
-	append_delim_value(writebuf, mv.begin(), mv.end());
+        const string_ref &mv = mvs[i];
+        append_delim_value(writebuf, mv.begin(), mv.end());
       }
     }
   }
   writebuf.append_literal("\n");
+  printf("writebuf:\n%s\n", writebuf.begin());
   ++num_req_bufd;
 }
 
-int
-hstcpcli::request_send()
-{
+int hstcpcli::request_send() {
   if (error_code < 0) {
     return error_code;
   }
@@ -322,15 +301,13 @@ hstcpcli::request_send()
   return 0;
 }
 
-int
-hstcpcli::response_recv(size_t& num_flds_r)
-{
+int hstcpcli::response_recv(size_t &num_flds_r) {
   if (error_code < 0) {
     return error_code;
   }
   clear_error();
   if (num_req_bufd > 0 || num_req_sent == 0 || num_req_rcvd > 0 ||
-    response_end_offset != 0) {
+      response_end_offset != 0) {
     close();
     return set_error(-1, "response_recv: protocol out of sync");
   }
@@ -353,14 +330,17 @@ hstcpcli::response_recv(size_t& num_flds_r)
       return set_error(-1, "read: eof");
     }
   }
+
   response_end_offset = offset;
   --num_req_sent;
   ++num_req_rcvd;
   char *start = readbuf.begin();
   char *const finish = start + response_end_offset - 1;
+
   const size_t resp_code = read_ui32(start, finish);
   skip_one(start, finish);
   num_flds_r = num_flds = read_ui32(start, finish);
+
   if (resp_code != 0) {
     skip_one(start, finish);
     char *const err_begin = start;
@@ -373,17 +353,16 @@ hstcpcli::response_recv(size_t& num_flds_r)
     return set_error(resp_code, e);
   }
   cur_row_offset = start - readbuf.begin();
-  DBG(fprintf(stderr, "[%s] ro=%zu eol=%zu\n",
-    std::string(readbuf.begin(), readbuf.begin() + response_end_offset)
-      .c_str(),
-    cur_row_offset, response_end_offset));
+  DBG(fprintf(
+      stderr, "[%s] ro=%zu eol=%zu\n",
+      std::string(readbuf.begin(), readbuf.begin() + response_end_offset)
+          .c_str(),
+      cur_row_offset, response_end_offset));
   DBG(fprintf(stderr, "RES 0\n"));
   return 0;
 }
 
-const string_ref *
-hstcpcli::get_next_row()
-{
+const string_ref *hstcpcli::get_next_row() {
   if (num_flds == 0) {
     DBG(fprintf(stderr, "GNR NF 0\n"));
     return 0;
@@ -415,9 +394,7 @@ hstcpcli::get_next_row()
   return &flds[0];
 }
 
-void
-hstcpcli::response_buf_remove()
-{
+void hstcpcli::response_buf_remove() {
   if (response_end_offset == 0) {
     close();
     set_error(-1, "response_buf_remove: protocol out of sync");
@@ -431,11 +408,8 @@ hstcpcli::response_buf_remove()
   flds.clear();
 }
 
-hstcpcli_ptr
-hstcpcli_i::create(const socket_args& args)
-{
+hstcpcli_ptr hstcpcli_i::create(const socket_args &args) {
   return hstcpcli_ptr(new hstcpcli(args));
 }
 
-};
-
+}; // namespace dena

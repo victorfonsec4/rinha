@@ -1,4 +1,3 @@
-
 // vim:sw=2:ai
 
 /*
@@ -9,22 +8,21 @@
 #ifndef DENA_AUTO_ADDRINFO_HPP
 #define DENA_AUTO_ADDRINFO_HPP
 
-#include <my_config.h>
-#include <sys/types.h>
-#include <sys/socket.h>
 #include <netdb.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 
+// #include "libhsclient/my_global.h"
 #include "util.hpp"
 
+#define SOCKET_SIZE_TYPE int
 typedef SOCKET_SIZE_TYPE size_socket;
 
 namespace dena {
 
 struct auto_addrinfo : private noncopyable {
-  auto_addrinfo() : addr(0) { }
-  ~auto_addrinfo() {
-    reset();
-  }
+  auto_addrinfo() : addr(0) {}
+  ~auto_addrinfo() { reset(); }
   void reset(addrinfo *a = 0) {
     if (addr != 0) {
       freeaddrinfo(addr);
@@ -33,7 +31,8 @@ struct auto_addrinfo : private noncopyable {
   }
   const addrinfo *get() const { return addr; }
   int resolve(const char *node, const char *service, int flags = 0,
-    int family = AF_UNSPEC, int socktype = SOCK_STREAM, int protocol = 0) {
+              int family = AF_UNSPEC, int socktype = SOCK_STREAM,
+              int protocol = 0) {
     reset();
     addrinfo hints;
     hints.ai_flags = flags;
@@ -42,11 +41,11 @@ struct auto_addrinfo : private noncopyable {
     hints.ai_protocol = protocol;
     return getaddrinfo(node, service, &hints, &addr);
   }
- private:
+
+private:
   addrinfo *addr;
 };
 
-};
+}; // namespace dena
 
 #endif
-
