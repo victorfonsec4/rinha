@@ -18,3 +18,4 @@ CREATE TABLE IF NOT EXISTS Users (
   version INT DEFAULT 1
 );
 CREATE INDEX handlers_index ON Users (id);
+CREATE INDEX writers_index ON Users (id, version);

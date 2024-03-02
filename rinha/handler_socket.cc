@@ -33,7 +33,7 @@ bool InitializeHs(absl::string_view host) {
 
     read_ptr->request_buf_open_index(
         /*identifies the tcpcli handler*/ read_ptr_id, "mydb", "Users",
-        "handlers_index", "id,data");
+        "handlers_index", "id,data,version");
 
     if (read_ptr->request_send() != 0) {
       LOG(ERROR) << "request_send failed: " << read_ptr->get_error();
@@ -72,7 +72,7 @@ bool InitializeHs(absl::string_view host) {
 
     write_ptr->request_buf_open_index(
         /*identifies the tcpcli handler*/ write_ptr_id, "mydb", "Users",
-        "handlers_index", "id,data");
+        "writers_index", "id,data,version");
 
     int rc = write_ptr->request_send();
     if (rc != 0) {
@@ -101,7 +101,7 @@ bool InitializeHs(absl::string_view host) {
   return true;
 }
 
-bool ReadCustomerHs(int id, Customer *customer) {
+bool ReadCustomerHs(int id, Customer *customer, int *version) {
   char id_buf[2];
   id_buf[0] = id + '0';
   id_buf[1] = '\0';
@@ -159,6 +159,11 @@ bool ReadCustomerHs(int id, Customer *customer) {
           DLOG(INFO) << "Customer limit: " << customer->limit
                      << " balance:" << customer->balance;
         }
+        if (i == 2) {
+          // Its the version field
+          *version = std::stoi(std::string(v.begin(), v.end()));
+          DLOG(INFO) << "Version: " << *version;
+        }
       } else {
         // Its null
       }
@@ -170,28 +175,39 @@ bool ReadCustomerHs(int id, Customer *customer) {
   return true;
 }
 
-bool WriteCustomerHs(int id, const Customer &customer) {
+bool WriteCustomerHs(int id, const Customer &customer, int version) {
   char id_write[2];
   id_write[0] = id + '0';
   id_write[1] = '\0';
+  dena::string_ref id_write_ref(id_write, 1);
+
+  std::string version_str = std::to_string(version);
+  dena::string_ref version_write_ref(version_str.data(), version_str.size());
+
+  std::string next_version_str = std::to_string(version + 1);
+  dena::string_ref next_version_write_ref(next_version_str.data(),
+                                          next_version_str.size());
 
   char op_write[] = "=";
-  char mod_op_update[] = "U";
-  dena::string_ref id_write_ref(id_write, 1);
   dena::string_ref op_write_ref(op_write, 1);
+
+  char mod_op_update[] = "U";
   dena::string_ref mod_op_update_ref(mod_op_update, 1);
+
   dena::string_ref update_value_ref(reinterpret_cast<const char *>(&customer),
                                     sizeof(rinha::Customer));
-  dena::string_ref keys_write_ref[1] = {id_write_ref};
-  dena::string_ref update_values_ref[2] = {id_write_ref, update_value_ref};
+
+  dena::string_ref keys_write_ref[2] = {id_write_ref, version_write_ref};
+  dena::string_ref update_values_ref[3] = {id_write_ref, update_value_ref,
+                                           next_version_write_ref};
   write_ptr->request_buf_exec_generic(/*tcpcli handler id*/ write_ptr_id,
                                       op_write_ref,
                                       /*keys to find=*/keys_write_ref,
-                                      /*size keys=*/1,
+                                      /*size keys=*/2,
                                       /*limit=*/0, /*skip=*/0,
                                       /*mod_op*/ mod_op_update_ref,
                                       /*mvs=*/update_values_ref,
-                                      /*mvs_len=*/2);
+                                      /*mvs_len=*/3);
 
   if (write_ptr->request_send() != 0) {
     LOG(ERROR) << "request_send failed";
@@ -216,14 +232,19 @@ bool WriteCustomerHs(int id, const Customer &customer) {
 
   const dena::string_ref *row = 0;
 
+  bool modified = false;
   while ((row = write_ptr->get_next_row()) != 0) {
     DLOG(INFO) << "Found a row: " << row;
     for (size_t i = 0; i < nflds; i++) {
       const dena::string_ref &v = row[i];
 
       if (v.begin() != 0) {
-        // Its a value
-        // DLOG(INFO) << "value: " << std::string(v.begin(), v.end());
+        // Its the number of modified rows
+        int modified_rows = std::stoi(std::string(v.begin(), v.end()));
+        DLOG(INFO) << "Modified rows: " << modified_rows;
+        if (modified_rows > 0) {
+          modified = true;
+        }
       } else {
         // Its null
       }
@@ -234,7 +255,7 @@ bool WriteCustomerHs(int id, const Customer &customer) {
     write_ptr->response_buf_remove();
   }
 
-  return true;
+  return modified;
 }
 
 } // namespace rinha

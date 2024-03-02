@@ -5,8 +5,8 @@
 
 namespace rinha {
 bool InitializeHs(absl::string_view host);
-bool ReadCustomerHs(int id, Customer *customer);
-bool WriteCustomerHs(int id, const Customer &customer);
+bool ReadCustomerHs(int id, Customer *customer, int *version);
+bool WriteCustomerHs(int id, const Customer &customer, int version);
 } // namespace rinha
 
 #endif
