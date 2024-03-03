@@ -2,7 +2,7 @@ version: "3.5"
 
 services:
   router:
-    image: vifonsec/router:latest
+    image: vifonsec/nginx:latest
     volumes:
       - /tmp:/tmp
     ports:
