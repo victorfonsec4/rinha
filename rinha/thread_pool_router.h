@@ -10,7 +10,6 @@ struct Message {
 };
 
 void InitializeThreadPool(size_t num_threads);
-void EnqueueProcessRequest(Message &&m);
 } // namespace rinha
 
 #endif

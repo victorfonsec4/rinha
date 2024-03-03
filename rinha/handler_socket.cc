@@ -120,6 +120,7 @@ bool ReadCustomerHs(int id, Customer *customer, int *version) {
 
   if (read_ptr->request_send() != 0) {
     LOG(ERROR) << "request_send failed";
+    LOG(ERROR) << "error code: " << read_ptr->get_error_code();
     DCHECK(false);
     return false;
   }

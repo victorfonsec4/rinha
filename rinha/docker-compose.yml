@@ -42,7 +42,7 @@ services:
       resources:
         limits:
           cpus: "0.25"
-          memory: "200MB"
+          memory: "100MB"
     network_mode: "host"
 
   db:
@@ -53,6 +53,6 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.2"
+          cpus: "0.25"
           memory: "350MB"
     network_mode: "host"
