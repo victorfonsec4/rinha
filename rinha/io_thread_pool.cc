@@ -11,6 +11,9 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "glog/logging.h"
+#include "rinha/handler_socket.h"
+#include "rinha/maria_database.h"
+#include "rinha/request_processor.h"
 
 namespace rinha {
 namespace {
@@ -37,6 +40,9 @@ void SetNonBlocking(int socket_fd) {
 void InitializeIoThreadPool(size_t num_threads, int epoll_fd, int server_fd) {
   for (size_t i = 0; i < num_threads; ++i) {
     workers.emplace_back([epoll_fd, server_fd] {
+      CHECK(rinha::MariaInitializeThread());
+      CHECK(rinha::InitializeHs("/"));
+
       std::vector<epoll_event> events(kMaxEvents);
       static thread_local std::vector<std::vector<char>> buffers(
           kMaxConnections, std::vector<char>(kBufferTotalSize));
@@ -152,7 +158,7 @@ void InitializeIoThreadPool(size_t num_threads, int epoll_fd, int server_fd) {
               params.num_read = total_count;
               params.client_fd = event.data.fd;
               params.buffer_p = &buffers[buffer_index];
-              rinha::EnqueueProcessRequest(std::move(params));
+              ProcessRequest(std::move(params));
 
               buffer_index = (buffer_index + 1) % kMaxConnections;
             }

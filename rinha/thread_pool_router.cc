@@ -149,7 +149,7 @@ int create_unix_connection_and_add_to_epoll(int epoll_fd) {
   }
 
   // Add the new socket to the epoll
-  static struct epoll_event event;
+  static thread_local struct epoll_event event;
   event.data.fd = unix_fd;
   event.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
   success = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, unix_fd, &event);
@@ -243,7 +243,7 @@ void HandleMessage(const Message &m, int epoll_fd) {
 
     write(dst, buf, total_count);
 
-    static struct epoll_event event;
+    static thread_local struct epoll_event event;
     event.data.fd = src;
     event.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
     int success = epoll_ctl(epoll_fd, EPOLL_CTL_MOD, src, &event);
@@ -360,7 +360,7 @@ void InitializeThreadPool(size_t num_threads) {
               // Make the incoming socket non-blocking and add it to the
               // list of fds to monitor.
               int success = make_socket_non_blocking(infd);
-              static struct epoll_event event;
+              static thread_local struct epoll_event event;
               if (success == -1)
                 abort();
 

@@ -29,10 +29,10 @@ ABSL_FLAG(std::string, socket_path, "/tmp/unix_socket_example.sock",
 ABSL_FLAG(std::string, handler_socket_hostname, "/",
           "Hostname for the handler socket");
 
-ABSL_FLAG(int, num_process_threads, 15,
+ABSL_FLAG(int, num_process_threads, 0,
           "Number of threads for requesting processing");
 
-ABSL_FLAG(int, num_connection_threads, 2,
+ABSL_FLAG(int, num_connection_threads, 15,
           "Number of threads for handling connections");
 
 namespace {

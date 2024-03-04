@@ -154,6 +154,9 @@ cc_library(
         "@abseil//:abseil",
         "@glog//:glog",
         ":thread_pool",
+        ":request_processor",
+        ":maria_database",
+        ":handler_socket",
     ])
 
 cc_library(
