@@ -31,12 +31,12 @@ Result HandleRequest(Request &&request, std::string *response_body,
   TransactionResult result = MariaDbExecuteTransaction(
       request.id, std::move(request.transaction), customer);
   if (result == TransactionResult::NOT_FOUND) {
-    DLOG(ERROR) << "Customer not found" << std::endl;
+    DLOG(INFO) << "Customer not found" << std::endl;
     return Result::NOT_FOUND;
   }
 
   if (result == TransactionResult::LIMIT_EXCEEDED) {
-    DLOG(ERROR) << "Limit exceeded" << std::endl;
+    DLOG(INFO) << "Limit exceeded" << std::endl;
     return Result::INVALID_REQUEST;
   }
 

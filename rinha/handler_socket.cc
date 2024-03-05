@@ -23,7 +23,7 @@ bool InitializeHs(absl::string_view host) {
     dena::config read_conf;
     read_conf["host"] = host;
     read_conf["port"] = "/tmp/handler_socket_read";
-    read_conf["timeout"] = "600000";
+    read_conf["timeout"] = "30";
     read_conf["listen_backlog"] = "256";
 
     dena::socket_args read_s_args;
@@ -62,7 +62,7 @@ bool InitializeHs(absl::string_view host) {
     dena::config write_conf;
     write_conf["host"] = host;
     write_conf["port"] = "/tmp/handler_socket_write";
-    write_conf["timeout"] = "600000";
+    write_conf["timeout"] = "30";
     write_conf["listen_backlog"] = "256";
 
     dena::socket_args write_s_args;

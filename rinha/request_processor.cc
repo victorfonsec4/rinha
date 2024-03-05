@@ -147,6 +147,7 @@ void ProcessRequest(ProcessRequestParams &&params) {
       // data. So go back to the main loop.
       if (errno != EAGAIN) {
         LOG(ERROR) << "Error reading from client: " << strerror(errno);
+        DCHECK(false);
         close_connection = true;
       }
       break;
@@ -155,6 +156,7 @@ void ProcessRequest(ProcessRequestParams &&params) {
       // connection.
       DLOG(ERROR) << "Wrote 0 bytes to client";
       close_connection = true;
+      DCHECK(false);
       break;
     }
     write_count += count;
@@ -167,7 +169,7 @@ void ProcessRequest(ProcessRequestParams &&params) {
     DLOG(ERROR) << "Closing connection";
     close(client_fd);
   }
-  static int total_write_count = 0;
+  static thread_local int total_write_count = 0;
   total_write_count++;
   DLOG(INFO) << "Write count: " << total_write_count;
 }

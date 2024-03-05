@@ -49,6 +49,7 @@ void InitializeIoThreadPool(size_t num_threads, int epoll_fd, int server_fd) {
         int n, i;
 
         n = epoll_wait(epoll_fd, events.data(), kMaxEvents, -1);
+        DLOG(INFO) << "Num events: " << n;
         for (i = 0; i < n; i++) {
           const auto &event = events[i];
           DLOG(INFO) << "New epoll event: " << event.events;
@@ -56,8 +57,8 @@ void InitializeIoThreadPool(size_t num_threads, int epoll_fd, int server_fd) {
               (!(event.events & EPOLLIN))) {
             // An error has occured on this fd, or the socket is not
             // ready for reading (why were we notified then?)
-            DLOG(ERROR) << "epoll error: " << strerror(errno)
-                        << " events: " << event.events;
+            DLOG(ERROR) << "epoll error: " << strerror(errno) << " on fd "
+                        << event.data.fd << " events: " << event.events;
             DLOG(ERROR) << "Closing connection on descriptor " << event.data.fd;
             close(event.data.fd);
             continue;
@@ -90,7 +91,7 @@ void InitializeIoThreadPool(size_t num_threads, int epoll_fd, int server_fd) {
               // list of fds to monitor.
               SetNonBlocking(infd);
 
-              static struct epoll_event event;
+              static thread_local struct epoll_event event;
               event.data.fd = infd;
               event.events = EPOLLIN | EPOLLET;
               int success = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, infd, &event);
@@ -136,12 +137,16 @@ void InitializeIoThreadPool(size_t num_threads, int epoll_fd, int server_fd) {
               }
               if (count > 0) {
                 total_count += count;
+                DLOG(INFO) << "Read buffer so far:"
+                           << std::string(buffers[buffer_index].data(),
+                                          total_count);
               }
             }
 
             if (total_count > 0) {
               read_count++;
               DLOG(INFO) << "Read count: " << read_count;
+              DLOG(INFO) << "Current buffer index: " << buffer_index;
 
               ProcessRequestParams params;
               params.num_read = total_count;

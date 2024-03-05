@@ -135,7 +135,7 @@ int create_unix_connection_and_add_to_epoll(int epoll_fd) {
   }
 
   // Add the new socket to the epoll
-  static struct epoll_event event;
+  static thread_local struct epoll_event event;
   event.data.fd = unix_fd;
   event.events = EPOLLIN | EPOLLET;
   success = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, unix_fd, &event);
