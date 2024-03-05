@@ -23,7 +23,7 @@ bool InitializeHs(absl::string_view host) {
     dena::config read_conf;
     read_conf["host"] = host;
     read_conf["port"] = "/tmp/handler_socket_read";
-    read_conf["timeout"] = "600000";
+    read_conf["timeout"] = "1";
     read_conf["listen_backlog"] = "256";
 
     dena::socket_args read_s_args;
@@ -37,7 +37,7 @@ bool InitializeHs(absl::string_view host) {
 
     if (read_ptr->request_send() != 0) {
       LOG(ERROR) << "request_send failed: " << read_ptr->get_error();
-      DCHECK(false);
+      CHECK(false);
       return false;
     }
 
@@ -50,7 +50,7 @@ bool InitializeHs(absl::string_view host) {
         std::string s = read_ptr->get_error();
         DLOG(ERROR) << "error opening handle: " << s;
         DLOG(ERROR) << "error code: " << e;
-        DCHECK(false);
+        CHECK(false);
         return false;
       }
       read_ptr->response_buf_remove();
@@ -62,7 +62,7 @@ bool InitializeHs(absl::string_view host) {
     dena::config write_conf;
     write_conf["host"] = host;
     write_conf["port"] = "/tmp/handler_socket_write";
-    write_conf["timeout"] = "600000";
+    write_conf["timeout"] = "1";
     write_conf["listen_backlog"] = "256";
 
     dena::socket_args write_s_args;
@@ -78,7 +78,7 @@ bool InitializeHs(absl::string_view host) {
     if (rc != 0) {
       LOG(ERROR) << "request_send failed: " << write_ptr->get_error()
                  << " rc: " << rc;
-      DCHECK(false);
+      CHECK(false);
       return false;
     }
 
@@ -91,7 +91,7 @@ bool InitializeHs(absl::string_view host) {
         std::string s = write_ptr->get_error();
         DLOG(ERROR) << "error opening handle: " << s;
         DLOG(ERROR) << "error code: " << e;
-        DCHECK(false);
+        CHECK(false);
         return false;
       }
       write_ptr->response_buf_remove();
@@ -120,13 +120,13 @@ bool ReadCustomerHs(int id, Customer *customer, int *version) {
 
   if (read_ptr->request_send() != 0) {
     LOG(ERROR) << "request_send failed";
-    DCHECK(false);
+    CHECK(false);
     return false;
   }
   if (read_ptr->get_error_code() != 0) {
     std::string s = read_ptr->get_error();
     DLOG(ERROR) << "error sending request: " << s;
-    DCHECK(false);
+    CHECK(false);
     return false;
   }
 
@@ -136,7 +136,7 @@ bool ReadCustomerHs(int id, Customer *customer, int *version) {
   if (read_ptr->get_error_code() != 0) {
     std::string s = read_ptr->get_error();
     DLOG(ERROR) << "error getting num fields: " << s;
-    DCHECK(false);
+    CHECK(false);
     return false;
   }
 
@@ -211,7 +211,7 @@ bool WriteCustomerHs(int id, const Customer &customer, int version) {
 
   if (write_ptr->request_send() != 0) {
     LOG(ERROR) << "request_send failed";
-    DCHECK(false);
+    CHECK(false);
     return false;
   }
   if (write_ptr->get_error_code() != 0) {
@@ -222,7 +222,7 @@ bool WriteCustomerHs(int id, const Customer &customer, int version) {
 
   size_t nflds = 0;
   int e = write_ptr->response_recv(nflds);
-  DCHECK(e == 0);
+  CHECK(e == 0);
   DLOG(INFO) << "nflds: " << nflds;
   if (write_ptr->get_error_code() != 0) {
     std::string s = write_ptr->get_error();

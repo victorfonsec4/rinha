@@ -167,6 +167,7 @@ bool MariaDbGetCustomer(int id, Customer *customer) {
   int version;
   if (!ReadCustomerHs(id, customer, &version)) {
     LOG(ERROR) << "Failed to read customer";
+    CHECK(false);
     return false;
   }
 
@@ -182,12 +183,16 @@ TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
 
   bool success = false;
   customer_write_mutexs[id].Lock();
+  int tries = 0;
   while (!success) {
+    tries++;
+    DLOG(INFO) << "Number of tries: " << tries;
     DLOG(INFO) << "Starting transaction for customer " << id;
 
     int version;
     if (!ReadCustomerHs(id, customer, &version)) {
       LOG(ERROR) << "Failed to read customer";
+      CHECK(false);
       continue;
     }
 
@@ -210,9 +215,10 @@ TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
       continue;
     }
 
-    customer_write_mutexs[id].Unlock();
     success = true;
   }
+
+  customer_write_mutexs[id].Unlock();
 
   return TransactionResult::SUCCESS;
 }

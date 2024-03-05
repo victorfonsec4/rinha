@@ -29,7 +29,7 @@ bool SubstringToInt(absl::string_view body, size_t start, size_t end, int *x) {
 }
 
 bool ParseJsonBody(absl::string_view body, Transaction *transaction) {
-  static constexpr unsigned int num_begin_idx = 10;
+  static thread_local constexpr unsigned int num_begin_idx = 10;
   size_t num_end_idx = body.find(',', num_begin_idx);
   size_t num_dot_idx = body.find('.', num_begin_idx);
   if (num_dot_idx < num_end_idx || num_end_idx == std::string::npos) {
