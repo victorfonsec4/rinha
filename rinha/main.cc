@@ -32,7 +32,7 @@ ABSL_FLAG(std::string, handler_socket_hostname, "/",
 ABSL_FLAG(int, num_process_threads, 15,
           "Number of threads for requesting processing");
 
-ABSL_FLAG(int, num_connection_threads, 3,
+ABSL_FLAG(int, num_connection_threads, 2,
           "Number of threads for handling connections");
 
 namespace {

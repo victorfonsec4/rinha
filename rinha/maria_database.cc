@@ -167,7 +167,7 @@ bool MariaDbGetCustomer(int id, Customer *customer) {
   int version;
   if (!ReadCustomerHs(id, customer, &version)) {
     LOG(ERROR) << "Failed to read customer";
-    CHECK(false);
+    DCHECK(false);
     return false;
   }
 
@@ -192,7 +192,7 @@ TransactionResult MariaDbExecuteTransaction(int id, Transaction &&transaction,
     int version;
     if (!ReadCustomerHs(id, customer, &version)) {
       LOG(ERROR) << "Failed to read customer";
-      CHECK(false);
+      DCHECK(false);
       continue;
     }
 
