@@ -24,7 +24,7 @@ namespace {
 constexpr char kSocketPath1[] = "/tmp/unix_socket_example.sock";
 constexpr char kSocketPath2[] = "/tmp/unix_socket_example2.sock";
 constexpr int kMaxConnections = 1000;
-constexpr int kInitialUnixConnections = 100;
+constexpr int kInitialUnixConnections = 50;
 constexpr int kMaxEvents = 1000;
 constexpr unsigned int kBufferSize = 4096;
 
@@ -35,9 +35,17 @@ std::vector<std::thread> workers;
 int tcp_to_unix[kMaxConnections];
 int unix_to_tcp[kMaxConnections];
 
-int available_unix_connections[kMaxConnections];
-std::atomic<int> available_unix_connections_start_idx = 0;
-std::atomic<int> available_unix_connections_end_idx = 0;
+int connection_1_fds[kMaxConnections];
+
+int available_unix_connections_1[kMaxConnections];
+std::atomic<int> available_unix_connections_1_start_idx = 0;
+std::atomic<int> available_unix_connections_1_end_idx = 0;
+
+int available_unix_connections_2[kMaxConnections];
+std::atomic<int> available_unix_connections_2_start_idx = 0;
+std::atomic<int> available_unix_connections_2_end_idx = 0;
+
+std::atomic<int> round_robin_counter = 0;
 
 thread_local int socket_to_use = 0;
 thread_local char buf[kBufferSize];
@@ -48,10 +56,18 @@ void erase_from_maps(int fd) {
     unix_to_tcp[unix_fd] = -1;
     tcp_to_unix[fd] = -1;
 
-    int end_idx = available_unix_connections_end_idx.fetch_add(
-                      1, std::memory_order_seq_cst) %
-                  kMaxConnections;
-    available_unix_connections[end_idx] = unix_fd;
+    bool connection_1 = (connection_1_fds[unix_fd] != -1);
+    if (connection_1) {
+      int end_idx = available_unix_connections_1_end_idx.fetch_add(
+                        1, std::memory_order_seq_cst) %
+                    kMaxConnections;
+      available_unix_connections_1[end_idx] = unix_fd;
+    } else {
+      int end_idx = available_unix_connections_2_end_idx.fetch_add(
+                        1, std::memory_order_seq_cst) %
+                    kMaxConnections;
+      available_unix_connections_2[end_idx] = unix_fd;
+    }
     close(fd);
     DLOG(INFO) << "Closed connection on descriptor tcp_fd " << fd;
     DLOG(INFO) << "Erased from maps tcp_fd " << fd << " and unix_fd "
@@ -93,8 +109,9 @@ int make_socket_non_blocking(int fd) {
   return 0;
 }
 
-int create_unix_socket_connection() {
-  const char *socket_path = socket_to_use % 2 ? kSocketPath1 : kSocketPath2;
+int create_unix_socket_connection(bool connection_1) {
+  const char *socket_path = connection_1 ? kSocketPath1 : kSocketPath2;
+
   socket_to_use++;
   DLOG(INFO) << "Creating new connection to socket " << socket_path;
   int sock_fd;
@@ -126,13 +143,17 @@ int create_unix_socket_connection() {
 
   DLOG(INFO) << "Created new connection";
 
+  if (connection_1) {
+    connection_1_fds[sock_fd] = 1;
+  }
+
   // Return the socket file descriptor
   return sock_fd;
 }
 
-int create_unix_connection_and_add_to_epoll(int epoll_fd) {
+int create_unix_connection_and_add_to_epoll(int epoll_fd, bool connection_1) {
   // Create a new connection to the unix socket
-  int unix_fd = create_unix_socket_connection();
+  int unix_fd = create_unix_socket_connection(connection_1);
   if (unix_fd == -1) {
     DLOG(ERROR) << "Failed to create new connection to unix socket";
     close(unix_fd);
@@ -174,6 +195,15 @@ int create_and_bind() {
   int flag = 1;
   int result =
       setsockopt(sfd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int));
+  if (result < 0) {
+    DLOG(ERROR) << "setsockopt error: " << strerror(errno);
+    close(sfd);
+    exit(EXIT_FAILURE);
+  }
+
+  flag = 1;
+  result =
+      setsockopt(sfd, IPPROTO_TCP, TCP_QUICKACK, (char *)&flag, sizeof(int));
   if (result < 0) {
     DLOG(ERROR) << "setsockopt error: " << strerror(errno);
     close(sfd);
@@ -265,7 +295,9 @@ void HandleMessage(const Message &m, int epoll_fd) {
 void InitializeThreadPool(size_t num_threads) {
   std::fill_n(tcp_to_unix, kMaxConnections, -1);
   std::fill_n(unix_to_tcp, kMaxConnections, -1);
-  std::fill_n(available_unix_connections, kMaxConnections, -1);
+  std::fill_n(available_unix_connections_1, kMaxConnections, -1);
+  std::fill_n(available_unix_connections_2, kMaxConnections, -1);
+  std::fill_n(connection_1_fds, kMaxConnections, -1);
 
   int server_fd, success;
   int epoll_fd;
@@ -302,13 +334,21 @@ void InitializeThreadPool(size_t num_threads) {
     abort();
   }
 
-  CHECK(available_unix_connections_end_idx < kMaxConnections);
+  CHECK(available_unix_connections_1_end_idx < kMaxConnections);
+  CHECK(available_unix_connections_2_end_idx < kMaxConnections);
   // Initialize a few unix connections
   for (int i = 0; i < kInitialUnixConnections; i++) {
-    int unix_fd = create_unix_connection_and_add_to_epoll(epoll_fd);
+    int unix_fd = create_unix_connection_and_add_to_epoll(epoll_fd, true);
 
-    available_unix_connections[available_unix_connections_end_idx] = unix_fd;
-    available_unix_connections_end_idx++;
+    available_unix_connections_1[available_unix_connections_1_end_idx] =
+        unix_fd;
+    available_unix_connections_1_end_idx++;
+
+    unix_fd = create_unix_connection_and_add_to_epoll(epoll_fd, false);
+
+    available_unix_connections_2[available_unix_connections_2_end_idx] =
+        unix_fd;
+    available_unix_connections_2_end_idx++;
   }
 
   LOG(INFO) << "Ready to receive connections...";
@@ -364,17 +404,38 @@ void InitializeThreadPool(size_t num_threads) {
               if (success == -1)
                 abort();
 
-              int start_idx = available_unix_connections_start_idx.fetch_add(
-                                  1, std::memory_order_seq_cst) %
-                              kMaxConnections;
-              int unix_fd = available_unix_connections[start_idx];
-              CHECK(unix_fd != -1);
-              DLOG(INFO) << "Associating unix_fd " << unix_fd << " with tcp_fd "
-                         << infd;
+              bool connection_1 = (round_robin_counter.fetch_add(1) % 2 == 0);
+              int unix_fd;
+              if (connection_1) {
+                DLOG(INFO) << "Using connection 1";
+                int start_idx =
+                    available_unix_connections_1_start_idx.fetch_add(
+                        1, std::memory_order_seq_cst) %
+                    kMaxConnections;
+                unix_fd = available_unix_connections_1[start_idx];
+                CHECK(unix_fd != -1);
+                DLOG(INFO) << "Associating unix_fd " << unix_fd
+                           << " with tcp_fd " << infd;
 
-              DLOG(INFO) << "Num connections: "
-                         << available_unix_connections_end_idx -
-                                available_unix_connections_start_idx;
+                DLOG(INFO) << "Num connections: "
+                           << available_unix_connections_1_end_idx -
+                                  available_unix_connections_1_start_idx;
+
+              } else {
+                DLOG(INFO) << "Using connection 2";
+                int start_idx =
+                    available_unix_connections_2_start_idx.fetch_add(
+                        1, std::memory_order_seq_cst) %
+                    kMaxConnections;
+                unix_fd = available_unix_connections_2[start_idx];
+                CHECK(unix_fd != -1);
+                DLOG(INFO) << "Associating unix_fd " << unix_fd
+                           << " with tcp_fd " << infd;
+
+                DLOG(INFO) << "Num connections: "
+                           << available_unix_connections_2_end_idx -
+                                  available_unix_connections_2_start_idx;
+              }
 
               // Add the new file descriptors to the maps
               DLOG(INFO) << "Adding new file descriptors to the maps tcp_fd "

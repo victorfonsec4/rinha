@@ -28,7 +28,7 @@ services:
     command: ["--socket_path=/tmp/unix_socket_example2.sock"]
 
   router:
-    image: vifonsec/nginx2:latest
+    image: vifonsec/router:latest
     volumes:
       - /tmp:/tmp
       - ./nginx2.conf:/etc/nginx/nginx.conf:ro
